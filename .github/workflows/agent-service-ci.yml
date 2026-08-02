@@ -1,0 +1,82 @@
+name: agent-service CI
+
+on:
+  push:
+    branches: [dev]
+    paths: [agent-service/**]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    defaults:
+      run:
+        working-directory: agent-service
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-java@v5
+        with:
+          java-version: 21
+          distribution: temurin
+          cache: gradle
+
+      - name: Install SonarScanner
+        run: |
+          curl -sSLo sonar-scanner.zip https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip
+          unzip sonar-scanner.zip
+          echo "$(pwd)/sonar-scanner-5.0.1.3006-linux/bin" >> $GITHUB_PATH
+
+      - name: Run tests
+        run: ./gradlew test --no-daemon
+        env:
+          STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
+
+      - name: Run lint & Code quality check
+        run: sonar-scanner
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_PROJECT_KEY: "agent-service"
+          SONAR_ORGANIZATION: "huzaifa678"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: "us-east-1"
+
+      - name: Get ECR URL
+        id: ecr
+        run: |
+          ECR_URL=$(aws ecr describe-repositories --repository-names agent-service \
+            --query 'repositories[0].repositoryUri' --output text)
+          echo "url=$ECR_URL" >> $GITHUB_OUTPUT
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build image (load locally for scanning)
+        uses: docker/build-push-action@v7
+        with:
+          context: agent-service
+          push: false
+          load: true
+          tags: ${{ steps.ecr.outputs.url }}:sha-${{ github.sha }}
+
+      - name: Install Trivy
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b "$HOME/.local/bin" v0.72.0
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Trivy image scan (scan-before-push gate)
+        run: |
+          trivy image --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 \
+            --format table "${{ steps.ecr.outputs.url }}:sha-${{ github.sha }}"
+
+      - name: Push scanned image
+        run: docker push "${{ steps.ecr.outputs.url }}:sha-${{ github.sha }}"
