@@ -1,0 +1,11 @@
+rootProject.name = 'agent-service'
+
+include 'agent-domain'
+include 'agent-application'
+include 'agent-adapter'
+include 'agent-bootstrap'
+
+project(':agent-domain').projectDir = file('agent-service/agent-domain')
+project(':agent-application').projectDir = file('agent-service/agent-application')
+project(':agent-adapter').projectDir = file('agent-service/agent-adapter')
+project(':agent-bootstrap').projectDir = file('agent-service/agent-bootstrap')
