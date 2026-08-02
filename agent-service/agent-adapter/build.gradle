@@ -1,0 +1,77 @@
+plugins {
+	// Generates Avro types from src/main/avro/*.avsc for usage/cost events published to Kafka.
+	id 'com.github.davidmc24.gradle.plugin.avro'
+}
+
+dependencies {
+	api project(':agent-application')
+	api project(':agent-domain')
+
+	implementation 'org.springframework.boot:spring-boot-starter-web'
+	implementation 'org.springframework.boot:spring-boot-starter-validation'
+	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
+
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	runtimeOnly 'org.postgresql:postgresql'
+
+	implementation 'dev.langchain4j:langchain4j'
+	implementation 'dev.langchain4j:langchain4j-open-ai'
+	implementation 'dev.langchain4j:langchain4j-anthropic'
+	implementation 'dev.langchain4j:langchain4j-pgvector'
+
+	implementation 'org.springframework.boot:spring-boot-starter-kafka'
+	implementation "org.apache.avro:avro:${avroVersion}"
+	implementation "io.confluent:kafka-avro-serializer:${confluentVersion}"
+
+	implementation 'org.springframework.boot:spring-boot-starter-opentelemetry'
+
+	implementation 'org.springframework.cloud:spring-cloud-starter-circuitbreaker-resilience4j'
+
+	implementation 'org.springframework.boot:spring-boot-starter-grpc-client'
+	implementation 'org.springframework.grpc:spring-grpc-server-web-spring-boot-starter'
+	implementation 'io.grpc:grpc-netty-shaded'
+	implementation 'io.grpc:grpc-stub'
+	implementation 'io.grpc:grpc-protobuf'
+	implementation 'javax.annotation:javax.annotation-api:1.3.2'
+	implementation 'build.buf.gen:protocol-buffer-org_proto_protocolbuffers_java:34.1.0.1.20260428122725.252ac983a046'
+
+	testImplementation 'org.springframework.boot:spring-boot-test'
+	testImplementation 'org.springframework.boot:spring-boot-webmvc-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-kafka-test'
+	testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
+	testImplementation 'org.testcontainers:testcontainers-postgresql'
+	testImplementation 'org.testcontainers:testcontainers-kafka'
+	testImplementation 'org.mockito:mockito-core'
+	testImplementation 'org.assertj:assertj-core'
+	testImplementation project(':agent-bootstrap')
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+sourceSets {
+	main {
+		java {
+			// Avro-generated sources land here by default; buf-generated gRPC stubs too.
+			srcDir("$projectDir/build/generated/buf")
+		}
+	}
+}
+
+// Only run `buf generate` once proto sources exist — keeps a clean checkout building.
+def hasProto = file("$projectDir/src/main/proto").exists() &&
+		file("$projectDir/buf.gen.yaml").exists() &&
+		file("$projectDir/buf.yaml").exists()
+
+tasks.register('generateBufCode', Exec) {
+	onlyIf { hasProto }
+	workingDir = projectDir
+	commandLine 'buf', 'generate'
+	inputs.dir("$projectDir/src/main/proto").optional()
+	outputs.dir("$projectDir/build/generated/buf")
+}
+
+if (hasProto) {
+	tasks.named("compileJava") {
+		dependsOn("generateBufCode")
+	}
+}
