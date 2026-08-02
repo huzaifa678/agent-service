@@ -1,0 +1,89 @@
+plugins {
+    id 'java'
+    id 'io.spring.dependency-management' version '1.1.7' apply false
+    id 'org.springframework.boot' version '4.1.0' apply false
+    id 'org.asciidoctor.jvm.convert' version '4.0.5' apply false
+    id 'com.github.davidmc24.gradle.plugin.avro' version '1.9.1' apply false
+    id 'jacoco'
+}
+
+ext {
+    set('springGrpcVersion', "1.0.2")
+    set('springCloudVersion', "2025.1.0")
+    set('springBootVersion', "4.1.0")
+    set('confluentVersion', "7.6.1")
+    set('avroVersion', "1.11.3")
+    set('langchain4jVersion', "1.0.1")
+}
+
+allprojects {
+    group = 'com.project'
+    version = '0.0.1-SNAPSHOT'
+
+    repositories {
+        mavenCentral()
+        maven {
+            url = "https://packages.confluent.io/maven/"
+        }
+        maven {
+            name = "buf"
+            url = "https://buf.build/gen/maven"
+            credentials(HttpHeaderCredentials)
+            authentication {
+                header(HttpHeaderAuthentication)
+            }
+        }
+    }
+}
+
+subprojects {
+    apply plugin: 'java-library'
+    apply plugin: 'io.spring.dependency-management'
+    apply plugin: 'jacoco'
+
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(21)
+        }
+    }
+
+    configurations {
+        compileOnly {
+            extendsFrom annotationProcessor
+        }
+    }
+
+    dependencies {
+        implementation(platform("org.springframework.boot:spring-boot-dependencies:${springBootVersion}"))
+        implementation(platform("org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"))
+        implementation(platform("org.springframework.grpc:spring-grpc-dependencies:${springGrpcVersion}"))
+        implementation(platform("dev.langchain4j:langchain4j-bom:${langchain4jVersion}"))
+
+        constraints {
+            implementation("com.google.protobuf:protobuf-java:4.34.2")
+            implementation("com.google.protobuf:protobuf-java-util:4.34.2")
+        }
+
+        compileOnly 'org.projectlombok:lombok'
+        annotationProcessor 'org.projectlombok:lombok'
+
+        testImplementation 'org.springframework.boot:spring-boot-starter-test'
+        testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    }
+
+    tasks.withType(Test).configureEach {
+        useJUnitPlatform()
+        finalizedBy tasks.named('jacocoTestReport')
+    }
+
+    // Emit JaCoCo XML in every module so SonarQube can aggregate coverage
+    tasks.withType(JacocoReport).configureEach {
+        reports {
+            xml.required = true
+        }
+    }
+
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+    }
+}
