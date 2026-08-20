@@ -64,6 +64,10 @@ subprojects {
             implementation("com.google.protobuf:protobuf-java-util:4.34.2")
         }
 
+        // The platform BOMs above only constrain the implementation config; the
+        // annotation processor path needs the Boot BOM too, otherwise Lombok has no
+        // managed version and compilation fails to resolve it.
+        annotationProcessor(platform("org.springframework.boot:spring-boot-dependencies:${springBootVersion}"))
         compileOnly 'org.projectlombok:lombok'
         annotationProcessor 'org.projectlombok:lombok'
 
