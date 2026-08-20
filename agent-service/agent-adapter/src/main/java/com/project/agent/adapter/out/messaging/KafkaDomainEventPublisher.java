@@ -44,7 +44,16 @@ public class KafkaDomainEventPublisher implements DomainEventPublisherPort {
         for (DomainEvent event : events) {
             try {
                 String payload = objectMapper.writeValueAsString(event);
-                kafkaTemplate.send(topic, event.eventId().toString(), payload);
+                kafkaTemplate.send(topic, event.eventId().toString(), payload)
+                        .whenComplete((result, ex) -> {
+                            if (ex != null) {
+                                // The send failed after Kafka's own retries; the message never
+                                // left the app so there is nothing to dead-letter. Surface it to
+                                // Loki via the OTLP appender for alerting/replay.
+                                log.error("Failed to publish domain event {} to {}",
+                                        event.eventId(), topic, ex);
+                            }
+                        });
             } catch (JsonProcessingException e) {
                 // A serialization failure is a programming error, not a transient one — fail loudly.
                 throw new IllegalStateException("Failed to serialize domain event " + event.eventId(), e);
