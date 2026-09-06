@@ -13,7 +13,6 @@ dependencies {
 	implementation project(':agent-domain')
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
-	// Spring MVC (not WebFlux) to match the adapter's blocking REST + langchain4j calls.
 	implementation 'org.springframework.boot:spring-boot-starter-web'
 	implementation 'io.opentelemetry.instrumentation:opentelemetry-logback-appender-1.0:2.28.1-alpha'
 	implementation 'org.springframework.boot:spring-boot-starter-opentelemetry'
