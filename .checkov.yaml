@@ -1,0 +1,13 @@
+# Checkov config for the `security` workflow's
+# "Checkov (dockerfile + secrets, baseline)" step.
+#
+# The workflow passes `--framework dockerfile,secrets` on the CLI and points
+# `--config-file` here; this file makes that path exist and keeps the step
+# reporting-only (a baseline), so findings surface in the logs without gating the
+# build. Flip `soft-fail` to false (or list checks under `hard-fail-on`) to enforce.
+framework:
+  - dockerfile
+  - secrets
+quiet: true
+compact: true
+soft-fail: true
