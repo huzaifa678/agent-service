@@ -11,10 +11,10 @@ import java.util.UUID;
 
 /**
  * REST adapter for the feedback read endpoints (get by id, list by conversation) under
- * {@code /api/agent/feedback}.
+ * {@code /api/v1/agent/feedback}.
  */
 @RestController
-@RequestMapping("/api/agent/feedback")
+@RequestMapping("/api/v1/agent/feedback")
 @RequiredArgsConstructor
 public class FeedbackQueryController {
 

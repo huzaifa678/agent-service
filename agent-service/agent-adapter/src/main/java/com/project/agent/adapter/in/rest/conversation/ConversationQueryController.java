@@ -12,10 +12,10 @@ import java.util.UUID;
 
 /**
  * REST adapter for the conversation read endpoints (get by id, list by user, list
- * messages) under {@code /api/agent/conversations}.
+ * messages) under {@code /api/v1/agent/conversations}.
  */
 @RestController
-@RequestMapping("/api/agent/conversations")
+@RequestMapping("/api/v1/agent/conversations")
 @RequiredArgsConstructor
 public class ConversationQueryController {
 

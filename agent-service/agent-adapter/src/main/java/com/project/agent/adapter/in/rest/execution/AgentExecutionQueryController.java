@@ -11,10 +11,10 @@ import java.util.UUID;
 
 /**
  * REST adapter for the agent-execution read endpoints (get by id, list by conversation)
- * under {@code /api/agent/executions}.
+ * under {@code /api/v1/agent/executions}.
  */
 @RestController
-@RequestMapping("/api/agent/executions")
+@RequestMapping("/api/v1/agent/executions")
 @RequiredArgsConstructor
 public class AgentExecutionQueryController {
 

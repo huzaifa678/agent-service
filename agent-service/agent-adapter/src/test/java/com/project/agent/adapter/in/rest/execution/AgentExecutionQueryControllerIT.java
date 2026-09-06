@@ -60,7 +60,7 @@ class AgentExecutionQueryControllerIT extends PostgreSQLContainerConfig {
                 conversationId, "gpt-4o", "openai", AgentExecutionStatus.COMPLETED
         );
 
-        mockMvc.perform(get("/api/agent/executions/{id}", entity.getId()))
+        mockMvc.perform(get("/api/v1/agent/executions/{id}", entity.getId()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(entity.getId().toString()))
                 .andExpect(jsonPath("$.conversationId").value(conversationId))
@@ -77,7 +77,7 @@ class AgentExecutionQueryControllerIT extends PostgreSQLContainerConfig {
 
     @Test
     void getById_nonExistingExecution_returns404() throws Exception {
-        mockMvc.perform(get("/api/agent/executions/{id}", UUID.randomUUID()))
+        mockMvc.perform(get("/api/v1/agent/executions/{id}", UUID.randomUUID()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("AgentExecutionNotFoundException"));
     }
@@ -87,7 +87,7 @@ class AgentExecutionQueryControllerIT extends PostgreSQLContainerConfig {
         seedExecution(conversationId, "gpt-4o", "openai", AgentExecutionStatus.COMPLETED);
         seedExecution(conversationId, "claude-3-5-sonnet", "anthropic", AgentExecutionStatus.FAILED);
 
-        mockMvc.perform(get("/api/agent/executions")
+        mockMvc.perform(get("/api/v1/agent/executions")
                         .param("conversationId", conversationId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2))
@@ -97,7 +97,7 @@ class AgentExecutionQueryControllerIT extends PostgreSQLContainerConfig {
 
     @Test
     void byConversation_nonExistingConversation_returnsEmptyList() throws Exception {
-        mockMvc.perform(get("/api/agent/executions")
+        mockMvc.perform(get("/api/v1/agent/executions")
                         .param("conversationId", UUID.randomUUID().toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(0));

@@ -17,10 +17,10 @@ import java.util.UUID;
 
 /**
  * REST adapter for the feedback command endpoints (submit, update) under
- * {@code /api/agent/feedback}.
+ * {@code /api/v1/agent/feedback}.
  */
 @RestController
-@RequestMapping("/api/agent/feedback")
+@RequestMapping("/api/v1/agent/feedback")
 @RequiredArgsConstructor
 public class FeedbackCommandController {
 

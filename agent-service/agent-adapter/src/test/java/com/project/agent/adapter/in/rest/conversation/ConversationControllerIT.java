@@ -46,7 +46,7 @@ class ConversationControllerIT extends PostgreSQLContainerConfig {
                 fixedTenantId, fixedUserId, "Integration Test Conversation"
         );
 
-        mockMvc.perform(post("/api/agent/conversations")
+        mockMvc.perform(post("/api/v1/agent/conversations")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
@@ -64,7 +64,7 @@ class ConversationControllerIT extends PostgreSQLContainerConfig {
     void getById_existingConversation_returns200() throws Exception {
         String conversationId = createConversation(fixedTenantId, fixedUserId, "Find Me");
 
-        mockMvc.perform(get("/api/agent/conversations/{id}", conversationId))
+        mockMvc.perform(get("/api/v1/agent/conversations/{id}", conversationId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(conversationId))
                 .andExpect(jsonPath("$.title").value("Find Me"))
@@ -73,7 +73,7 @@ class ConversationControllerIT extends PostgreSQLContainerConfig {
 
     @Test
     void getById_nonExistingConversation_returns404() throws Exception {
-        mockMvc.perform(get("/api/agent/conversations/{id}", UUID.randomUUID()))
+        mockMvc.perform(get("/api/v1/agent/conversations/{id}", UUID.randomUUID()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("ConversationNotFoundException"));
     }
@@ -83,7 +83,7 @@ class ConversationControllerIT extends PostgreSQLContainerConfig {
         createConversation(fixedTenantId, fixedUserId, "User Conv 1");
         createConversation(fixedTenantId, fixedUserId, "User Conv 2");
 
-        mockMvc.perform(get("/api/agent/conversations")
+        mockMvc.perform(get("/api/v1/agent/conversations")
                         .param("userId", fixedUserId.toString()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2))
@@ -97,7 +97,7 @@ class ConversationControllerIT extends PostgreSQLContainerConfig {
 
         AddMessageRequest messageRequest = new AddMessageRequest("USER", "Hello there", 10, 0);
 
-        mockMvc.perform(post("/api/agent/conversations/{id}/messages", conversationId)
+        mockMvc.perform(post("/api/v1/agent/conversations/{id}/messages", conversationId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(messageRequest)))
                 .andExpect(status().isOk())
@@ -109,12 +109,12 @@ class ConversationControllerIT extends PostgreSQLContainerConfig {
     void addMessage_toArchivedConversation_returns422() throws Exception {
         String conversationId = createConversation(fixedTenantId, fixedUserId, "Archive Test");
 
-        mockMvc.perform(post("/api/agent/conversations/{id}/archive", conversationId))
+        mockMvc.perform(post("/api/v1/agent/conversations/{id}/archive", conversationId))
                 .andExpect(status().isNoContent());
 
         AddMessageRequest messageRequest = new AddMessageRequest("USER", "Should fail", 5, 0);
 
-        mockMvc.perform(post("/api/agent/conversations/{id}/messages", conversationId)
+        mockMvc.perform(post("/api/v1/agent/conversations/{id}/messages", conversationId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(messageRequest)))
                 .andExpect(status().isUnprocessableEntity())
@@ -127,12 +127,12 @@ class ConversationControllerIT extends PostgreSQLContainerConfig {
 
         RenameConversationRequest renameRequest = new RenameConversationRequest("New Title");
 
-        mockMvc.perform(patch("/api/agent/conversations/{id}", conversationId)
+        mockMvc.perform(patch("/api/v1/agent/conversations/{id}", conversationId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(renameRequest)))
                 .andExpect(status().isNoContent());
 
-        mockMvc.perform(get("/api/agent/conversations/{id}", conversationId))
+        mockMvc.perform(get("/api/v1/agent/conversations/{id}", conversationId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.title").value("New Title"));
     }
@@ -141,10 +141,10 @@ class ConversationControllerIT extends PostgreSQLContainerConfig {
     void archive_activeConversation_returns204() throws Exception {
         String conversationId = createConversation(fixedTenantId, fixedUserId, "Archive Me");
 
-        mockMvc.perform(post("/api/agent/conversations/{id}/archive", conversationId))
+        mockMvc.perform(post("/api/v1/agent/conversations/{id}/archive", conversationId))
                 .andExpect(status().isNoContent());
 
-        mockMvc.perform(get("/api/agent/conversations/{id}", conversationId))
+        mockMvc.perform(get("/api/v1/agent/conversations/{id}", conversationId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("ARCHIVED"));
     }
@@ -153,10 +153,10 @@ class ConversationControllerIT extends PostgreSQLContainerConfig {
     void delete_existingConversation_returns204() throws Exception {
         String conversationId = createConversation(fixedTenantId, fixedUserId, "Delete Me");
 
-        mockMvc.perform(delete("/api/agent/conversations/{id}", conversationId))
+        mockMvc.perform(delete("/api/v1/agent/conversations/{id}", conversationId))
                 .andExpect(status().isNoContent());
 
-        mockMvc.perform(get("/api/agent/conversations/{id}", conversationId))
+        mockMvc.perform(get("/api/v1/agent/conversations/{id}", conversationId))
                 .andExpect(status().isNotFound());
     }
 
@@ -164,19 +164,19 @@ class ConversationControllerIT extends PostgreSQLContainerConfig {
     void messages_existingConversation_returnsMessageList() throws Exception {
         String conversationId = createConversation(fixedTenantId, fixedUserId, "Messages Test");
 
-        mockMvc.perform(post("/api/agent/conversations/{id}/messages", conversationId)
+        mockMvc.perform(post("/api/v1/agent/conversations/{id}/messages", conversationId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
                                 new AddMessageRequest("USER", "First", 10, 0))))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(post("/api/agent/conversations/{id}/messages", conversationId)
+        mockMvc.perform(post("/api/v1/agent/conversations/{id}/messages", conversationId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
                                 new AddMessageRequest("ASSISTANT", "Second", 20, 0))))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(get("/api/agent/conversations/{id}/messages", conversationId))
+        mockMvc.perform(get("/api/v1/agent/conversations/{id}/messages", conversationId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2))
                 .andExpect(jsonPath("$[0].role").value("USER"))
@@ -188,7 +188,7 @@ class ConversationControllerIT extends PostgreSQLContainerConfig {
     private String createConversation(UUID tenantId, UUID userId, String title) throws Exception {
         StartConversationRequest request = TestDataFactory.startConversationRequest(tenantId, userId, title);
 
-        String response = mockMvc.perform(post("/api/agent/conversations")
+        String response = mockMvc.perform(post("/api/v1/agent/conversations")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
