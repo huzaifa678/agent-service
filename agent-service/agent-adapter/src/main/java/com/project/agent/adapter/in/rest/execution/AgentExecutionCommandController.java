@@ -12,10 +12,10 @@ import org.springframework.web.bind.annotation.*;
 
 /**
  * REST adapter for the agent-execution command endpoint (run agent) under
- * {@code /api/agent/executions}.
+ * {@code /api/v1/agent/executions}.
  */
 @RestController
-@RequestMapping("/api/agent/executions")
+@RequestMapping("/api/v1/agent/executions")
 @RequiredArgsConstructor
 public class AgentExecutionCommandController {
 

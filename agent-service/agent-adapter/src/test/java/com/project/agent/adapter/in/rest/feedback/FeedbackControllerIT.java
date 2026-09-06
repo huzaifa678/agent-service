@@ -44,7 +44,7 @@ class FeedbackControllerIT extends PostgreSQLContainerConfig {
                 UUID.fromString(conversationId), messageId, 5, "Great response"
         );
 
-        mockMvc.perform(post("/api/agent/feedback")
+        mockMvc.perform(post("/api/v1/agent/feedback")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
@@ -64,7 +64,7 @@ class FeedbackControllerIT extends PostgreSQLContainerConfig {
         UUID messageId = addMessage(conversationId, "USER", "Test", 5, 0);
         String feedbackId = submitFeedback(conversationId, messageId, 4, "Good");
 
-        mockMvc.perform(get("/api/agent/feedback/{id}", feedbackId))
+        mockMvc.perform(get("/api/v1/agent/feedback/{id}", feedbackId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(feedbackId))
                 .andExpect(jsonPath("$.rating").value(4))
@@ -74,7 +74,7 @@ class FeedbackControllerIT extends PostgreSQLContainerConfig {
 
     @Test
     void getById_nonExistingFeedback_returns404() throws Exception {
-        mockMvc.perform(get("/api/agent/feedback/{id}", UUID.randomUUID()))
+        mockMvc.perform(get("/api/v1/agent/feedback/{id}", UUID.randomUUID()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("FeedbackNotFoundException"));
     }
@@ -87,7 +87,7 @@ class FeedbackControllerIT extends PostgreSQLContainerConfig {
         submitFeedback(conversationId, messageId, 5, "Excellent");
         submitFeedback(conversationId, messageId, 2, "Poor");
 
-        mockMvc.perform(get("/api/agent/feedback")
+        mockMvc.perform(get("/api/v1/agent/feedback")
                         .param("conversationId", conversationId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2))
@@ -103,7 +103,7 @@ class FeedbackControllerIT extends PostgreSQLContainerConfig {
 
         UpdateFeedbackRequest updateRequest = new UpdateFeedbackRequest(5, "Actually great");
 
-        mockMvc.perform(patch("/api/agent/feedback/{id}", feedbackId)
+        mockMvc.perform(patch("/api/v1/agent/feedback/{id}", feedbackId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(updateRequest)))
                 .andExpect(status().isOk())
@@ -116,7 +116,7 @@ class FeedbackControllerIT extends PostgreSQLContainerConfig {
     void update_nonExistingFeedback_returns404() throws Exception {
         UpdateFeedbackRequest updateRequest = new UpdateFeedbackRequest(5, "Great");
 
-        mockMvc.perform(patch("/api/agent/feedback/{id}", UUID.randomUUID())
+        mockMvc.perform(patch("/api/v1/agent/feedback/{id}", UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(updateRequest)))
                 .andExpect(status().isNotFound())
@@ -124,7 +124,7 @@ class FeedbackControllerIT extends PostgreSQLContainerConfig {
     }
 
     private String createConversation(UUID tenantId, UUID userId, String title) throws Exception {
-        String response = mockMvc.perform(post("/api/agent/conversations")
+        String response = mockMvc.perform(post("/api/v1/agent/conversations")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
                                 new com.project.agent.adapter.in.rest.dto.StartConversationRequest(
@@ -139,7 +139,7 @@ class FeedbackControllerIT extends PostgreSQLContainerConfig {
     }
 
     private UUID addMessage(String conversationId, String role, String content, int promptTokens, int completionTokens) throws Exception {
-        String response = mockMvc.perform(post("/api/agent/conversations/{id}/messages", conversationId)
+        String response = mockMvc.perform(post("/api/v1/agent/conversations/{id}/messages", conversationId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(
                                 new com.project.agent.adapter.in.rest.dto.AddMessageRequest(
@@ -157,7 +157,7 @@ class FeedbackControllerIT extends PostgreSQLContainerConfig {
                 UUID.fromString(conversationId), messageId, rating, comment
         );
 
-        String response = mockMvc.perform(post("/api/agent/feedback")
+        String response = mockMvc.perform(post("/api/v1/agent/feedback")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated())
