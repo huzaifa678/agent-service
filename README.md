@@ -21,8 +21,8 @@ graph TD
     subgraph Core["Core (framework-free)"]
         subgraph App["Application (agent-application)"]
             InPorts["Inbound Ports<br/>UseCases / Commands / Queries"]
-            Services["Application Services<br/>CQRS orchestration + tx<br/>execution workflow · RAG"]
-            OutPorts["Outbound Ports<br/>Repository · ChatModel · PromptTemplate<br/>VectorStore · DomainEventPublisher"]
+            Services["Application Services<br/>CQRS orchestration + tx<br/>execution workflow · RAG<br/>agent memory harness<br/>(short-term + long-term)"]
+            OutPorts["Outbound Ports<br/>Repository · ChatModel · PromptTemplate<br/>VectorStore · MemoryPolicy · DomainEventPublisher"]
         end
         subgraph Domain["Domain (agent-domain)"]
             Model["Aggregates & Entities<br/>Conversation · Message<br/>AgentExecution · ToolExecution · Feedback<br/>domain events + invariants"]
@@ -34,6 +34,7 @@ graph TD
         Persistence["Persistence<br/>Spring Data JPA"]
         Llm["LLM Adapter<br/>langchain4j (OpenAI · Anthropic)"]
         Vector["Vector Store / RAG<br/>pgvector adapter"]
+        Policy["Memory Policy Adapter<br/>OPA sidecar (Rego)"]
         EventOut["Event Publisher<br/>Kafka · Avro"]
     end
 
@@ -46,11 +47,13 @@ graph TD
     OutPorts -. implemented by .-> Persistence
     OutPorts -. implemented by .-> Llm
     OutPorts -. implemented by .-> Vector
+    OutPorts -. implemented by .-> Policy
     OutPorts -. implemented by .-> EventOut
 
     Persistence -->|JPA/Hibernate| PG[("PostgreSQL")]
     Vector -->|pgvector| PG
     Llm -->|HTTP| LLM["LLM Provider API"]
+    Policy -->|HTTP /v1/data| OPA[["OPA sidecar<br/>agent/memory Rego"]]
     EventOut -->|produce| Kafka[["Apache Kafka"]]
 
     Boot["agent-bootstrap<br/>Spring Boot app · wiring · config · :8083"] -.->|assembles| Core
@@ -65,9 +68,52 @@ graph TD
     style PG fill:#6C63FF,stroke:#333,color:#fff
     style LLM fill:#FF8B94,stroke:#333,color:#fff
     style Kafka fill:#231F20,stroke:#333,color:#fff
+    style OPA fill:#7D4CDB,stroke:#333,color:#fff
 ```
 
 > gRPC client/server dependencies are present but no downstream service is wired yet, so gRPC is omitted from the diagram above.
+
+## Agent Harness & Memory
+
+The agent's memory sits behind a **harness** (application layer, `execution.service.harness`)
+that both manages it as two tiers and governs what crosses the memory boundary. The workflow
+talks only to `AgentMemory`.
+
+**Two tiers.** Each turn's prompt is assembled tier by tier:
+
+- **Short-term (working) memory** (`ShortTermMemory`) — the recent turns of the live
+  conversation, verbatim, bounded to a window (`agent.memory.short-term.max-messages`) so a
+  long conversation can't grow the prompt without limit. Recency-based, and **secret-redacted**
+  on the way into the prompt (`SecretRedactor`) so a credential a user pasted is answered around
+  but never echoed back.
+- **Long-term memory** (pgvector, behind `RagService`) — everything the agent has said in the
+  conversation, recalled by semantic relevance rather than recency, score-gated and fused over
+  dense + sparse retrieval. Turns that age out of the short-term window are still here.
+
+**Governance.** Whatever lands in long-term memory gets replayed to the model on later turns,
+so you don't want a leaked API key or one tenant's data embedded, remembered, and quietly
+re-served. `AgentMemoryHarness` checks every long-term **recall** (after relevance gating) and
+**persist** against a policy, and drops what it denies (short-term redacts instead, since the
+model needs the live turn). The verdict isn't hard-coded: it's delegated through a
+`MemoryPolicyPort` to **Open Policy Agent** running the `policy/agent/memory.rego` bundle — the
+same policy-as-code engine this repo already uses to lint Dockerfiles in CI, now on the runtime
+path. Rules (secret redaction, tenant retention opt-out, cross-tenant isolation) change by
+shipping Rego, not by redeploying.
+
+**Rate limiting.** The expensive long-term operations (recall, persist) are metered per
+conversation by a Bucket4j token bucket (`MemoryRateLimiter`). Over budget, the harness skips
+that turn's long-term work — recall falls back to short-term memory, a persist is dropped —
+rather than failing the turn.
+
+**Resilience.** The two external calls memory makes — OPA and pgvector — are each wrapped in a
+Resilience4j circuit breaker (`memoryPolicy`, `vectorStore`), so a slow or broken dependency
+fails fast and degrades instead of hanging the turn. On an OPA outage the harness applies a
+configured posture — fail-closed by default (drop the recall, skip the persist); on a vector
+outage recall falls back to the short-term window plus a grounding guard.
+
+Governance is off by default (`agent.memory.policy.enabled=false`): a pass-through adapter
+allows everything, so local and dev runs need no OPA sidecar. Full write-up in
+[`docs/agent-memory-harness.md`](docs/agent-memory-harness.md).
 
 ## Domain Model
 
@@ -146,9 +192,11 @@ AgentExecution (Entity)
 | LLM | langchain4j (OpenAI + Anthropic chat models) |
 | RAG / Vectors | pgvector (via langchain4j-pgvector) |
 | Messaging | Apache Kafka (Avro + Confluent Schema Registry) |
+| Policy | Open Policy Agent (Rego) — runtime memory governance + Dockerfile linting (conftest) |
 | Internal RPC | gRPC (Buf Registry, spring-grpc) — dependencies present, not yet wired |
 | Code Quality | SonarQube / SonarCloud (sonar-scanner) + JaCoCo coverage |
 | Resilience | Resilience4j (circuit breaker + retry) |
+| Rate limiting | Bucket4j (per-conversation token buckets on memory ops) |
 | API Docs | SpringDoc OpenAPI / Swagger UI |
 | Observability | OpenTelemetry (Spring Boot starter), Actuator |
 | Testing | JUnit 5, Testcontainers, Spring REST Docs, Mockito |
@@ -192,6 +240,8 @@ agent-service/
 │   │   ├── out/persistence/     # Spring Data JPA repository adapters
 │   │   ├── out/llm/             # LLM chat/tool adapters (langchain4j: OpenAI, Anthropic)
 │   │   ├── out/vector/          # pgvector RAG adapter
+│   │   ├── out/policy/          # Memory-policy adapters (OPA sidecar + allow-all default)
+│   │   ├── out/metrics/         # Micrometer adapters (RAG + memory-policy metrics)
 │   │   ├── out/messaging/       # Domain event publisher (Kafka + Avro)
 │   │   └── out/grpc/            # gRPC client adapter (not yet wired)
 │   └── src/main/resources/          # application.properties, application-cred.properties
@@ -208,6 +258,8 @@ agent-service/
 ```
 
 > The domain has **zero framework dependencies**. `agent-domain` and `agent-application` compile with plain Java; `agent-adapter` and `agent-bootstrap` own all Spring/infrastructure wiring.
+
+> Rego policies live at the repo root under `policy/` — `policy/docker/` (Dockerfile linting, run by conftest in CI) and `policy/agent/` (the runtime memory-governance bundle loaded by the OPA sidecar). Both are unit-tested with `conftest verify` in the `security` workflow.
 
 ## Getting Started
 
@@ -242,6 +294,16 @@ management.opentelemetry.logging.export.otlp.endpoint=http://localhost:43180/v1/
 # Swagger UI (disabled by default, set true in dev)
 springdoc.api-docs.enabled=${SPRINGDOC_ENABLED:false}
 springdoc.swagger-ui.enabled=${SPRINGDOC_ENABLED:false}
+
+# Agent memory harness — two-tier memory + redaction + rate limit + OPA governance
+# (see docs/agent-memory-harness.md)
+agent.memory.short-term.max-messages=20
+agent.memory.short-term.redact.enabled=true
+agent.memory.rate-limit.enabled=true
+agent.memory.rate-limit.capacity=30
+agent.memory.policy.enabled=${AGENT_MEMORY_POLICY_ENABLED:false}   # off by default
+agent.memory.policy.fail-open=false
+agent.memory.policy.opa.base-url=${OPA_BASE_URL:http://localhost:8181}
 ```
 
 Create `agent-bootstrap/src/main/resources/application-cred.properties` with any secrets (API keys, etc.):
@@ -278,28 +340,28 @@ java -jar agent-bootstrap/build/libs/agent-bootstrap-0.0.1-SNAPSHOT.jar
 ## API
 
 Swagger UI: `http://localhost:8083/swagger-ui.html` (requires `SPRINGDOC_ENABLED=true`)  
-OpenAPI JSON: `http://localhost:8083/api-docs`
+OpenAPI JSON: `http://localhost:8083/api/v1-docs`
 
 ### Key Endpoints
 
 | Method | Path | Description |
 | |---|:---|
-| `POST` | `/api/agent/conversations` | Create a new conversation |
-| `GET` | `/api/agent/conversations/{id}` | Fetch a conversation by ID |
-| `GET` | `/api/agent/conversations` | List conversations by `userId` |
-| `PATCH` | `/api/agent/conversations/{id}` | Rename a conversation |
-| `POST` | `/api/agent/conversations/{id}/messages` | Add a message to a conversation |
-| `GET` | `/api/agent/conversations/{id}/messages` | List messages in a conversation |
-| `POST` | `/api/agent/conversations/{id}/archive` | Archive a conversation |
-| `DELETE` | `/api/agent/conversations/{id}` | Delete a conversation |
-| `POST` | `/api/agent/executions` | Run the agent on a conversation turn |
-| `POST` | `/api/agent/executions/stream` | Run the agent and stream the response as Server-Sent Events |
-| `GET` | `/api/agent/executions/{id}` | Fetch an agent execution by ID |
-| `GET` | `/api/agent/executions` | List executions by `conversationId` |
-| `POST` | `/api/agent/feedback` | Submit feedback |
-| `PATCH` | `/api/agent/feedback/{id}` | Update feedback |
-| `GET` | `/api/agent/feedback/{id}` | Fetch feedback by ID |
-| `GET` | `/api/agent/feedback` | List feedback by `conversationId` |
+| `POST` | `/api/v1/agent/conversations` | Create a new conversation |
+| `GET` | `/api/v1/agent/conversations/{id}` | Fetch a conversation by ID |
+| `GET` | `/api/v1/agent/conversations` | List conversations by `userId` |
+| `PATCH` | `/api/v1/agent/conversations/{id}` | Rename a conversation |
+| `POST` | `/api/v1/agent/conversations/{id}/messages` | Add a message to a conversation |
+| `GET` | `/api/v1/agent/conversations/{id}/messages` | List messages in a conversation |
+| `POST` | `/api/v1/agent/conversations/{id}/archive` | Archive a conversation |
+| `DELETE` | `/api/v1/agent/conversations/{id}` | Delete a conversation |
+| `POST` | `/api/v1/agent/executions` | Run the agent on a conversation turn |
+| `POST` | `/api/v1/agent/executions/stream` | Run the agent and stream the response as Server-Sent Events |
+| `GET` | `/api/v1/agent/executions/{id}` | Fetch an agent execution by ID |
+| `GET` | `/api/v1/agent/executions` | List executions by `conversationId` |
+| `POST` | `/api/v1/agent/feedback` | Submit feedback |
+| `PATCH` | `/api/v1/agent/feedback/{id}` | Update feedback |
+| `GET` | `/api/v1/agent/feedback/{id}` | Fetch feedback by ID |
+| `GET` | `/api/v1/agent/feedback` | List feedback by `conversationId` |
 | `GET` | `/actuator/health` | Health check |
 | `GET` | `/actuator/prometheus` | Prometheus metrics |
 
@@ -315,6 +377,14 @@ OpenAPI JSON: `http://localhost:8083/api-docs`
 - Exponential backoff (multiplier: 2, base: 300ms)
 - Retries on: `StatusRuntimeException`
 - Ignores: `IllegalArgumentException`
+
+**Circuit Breaker** (`vectorStore`) — long-term memory (pgvector):
+- Sliding window: 20 calls, opens at 50% failure, 10s in open state
+- Open circuit degrades to a best-effort miss (grounding guard on recall, no-op on write); config errors (`UnsupportedEmbeddingModelException`) are excluded
+
+**Circuit Breaker** (`memoryPolicy`) — OPA memory-governance calls:
+- Sliding window: 20 calls, opens at 50% failure, 15s in open state
+- Open circuit is treated as "policy unavailable"; the harness then applies its fail-open / fail-closed posture
 
 ## Observability
 
