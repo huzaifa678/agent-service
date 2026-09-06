@@ -33,6 +33,7 @@ public class AgentExecutionPersistenceMapper {
 
         return AgentExecutionJpaEntity.builder()
                 .id(execution.getId().value())
+                .version(execution.getVersion())
                 .conversationId(execution.getConversationId().value())
                 .modelName(execution.getModelName().value())
                 .providerName(execution.getProviderName().value())
@@ -42,6 +43,7 @@ public class AgentExecutionPersistenceMapper {
                 .costAmount(execution.getCost().amount())
                 .costCurrency(execution.getCost().currency().getCurrencyCode())
                 .latencyMillis(execution.getLatency().toMillis())
+                .retrievalConfidence(execution.getRetrievalConfidence())
                 .startedAt(execution.getStartedAt())
                 .completedAt(execution.getCompletedAt())
                 .toolExecutions(toolExecutions)
@@ -53,7 +55,7 @@ public class AgentExecutionPersistenceMapper {
                 .map(this::toDomain)
                 .collect(Collectors.toCollection(ArrayList::new));
 
-        return AgentExecution.reconstitute(
+        AgentExecution execution = AgentExecution.reconstitute(
                 AgentExecutionId.of(entity.getId()),
                 ConversationId.of(entity.getConversationId()),
                 ModelName.of(entity.getModelName()),
@@ -64,8 +66,15 @@ public class AgentExecutionPersistenceMapper {
                 Latency.of(Duration.ofMillis(entity.getLatencyMillis())),
                 toolExecutions,
                 entity.getStartedAt(),
-                entity.getCompletedAt()
+                entity.getCompletedAt(),
+                entity.getVersion()
         );
+
+        if (entity.getRetrievalConfidence() != null) {
+            execution.recordRetrievalConfidence(entity.getRetrievalConfidence());
+        }
+
+        return execution;
     }
 
     private ToolExecutionJpaEntity toJpa(ToolExecution tool) {
