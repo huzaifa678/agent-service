@@ -15,11 +15,11 @@ import java.util.UUID;
 
 /**
  * REST adapter for the conversation command endpoints (start, rename, add message,
- * archive, delete) under {@code /api/agent/conversations}. Delegates to the command
+ * archive, delete) under {@code /api/v1/agent/conversations}. Delegates to the command
  * use cases and maps aggregates to response DTOs.
  */
 @RestController
-@RequestMapping("/api/agent/conversations")
+@RequestMapping("/api/v1/agent/conversations")
 @RequiredArgsConstructor
 public class ConversationCommandController {
 
