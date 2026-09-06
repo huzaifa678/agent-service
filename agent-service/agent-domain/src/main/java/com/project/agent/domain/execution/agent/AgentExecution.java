@@ -42,11 +42,28 @@ public class AgentExecution {
 
     private Latency latency;
 
+    /**
+     * RAG retrieval confidence for this execution: the strongest relevance score among
+     * the context passages that were actually injected into the prompt, on a 0–1 scale,
+     * or {@code 0} when no context cleared the relevance bar. {@code null} for executions
+     * recorded before this was tracked. A durable, per-execution grounding signal for
+     * diagnosing low-confidence answers after the fact.
+     */
+    private Double retrievalConfidence;
+
     private final List<ToolExecution> toolExecutions;
 
     private final Instant startedAt;
 
     private Instant completedAt;
+
+    /**
+     * Optimistic-lock version, carried through rehydration. Null for a brand-new
+     * execution (Hibernate stamps the initial value on insert); the persisted
+     * value on a reconstituted one. Guards the load-modify-save transitions
+     * (e.g. a concurrent cancel racing with completion).
+     */
+    private final Long version;
 
     private AgentExecution(
             AgentExecutionId id,
@@ -65,6 +82,7 @@ public class AgentExecution {
         this.latency = Latency.of(Duration.ZERO);
         this.toolExecutions = new ArrayList<>();
         this.startedAt = Instant.now();
+        this.version = null;
     }
 
     /** Create a new execution in {@code RUNNING} state, stamped with the current time. */
@@ -93,7 +111,8 @@ public class AgentExecution {
             Latency latency,
             List<ToolExecution> toolExecutions,
             Instant startedAt,
-            Instant completedAt
+            Instant completedAt,
+            Long version
     ) {
         this.id = Objects.requireNonNull(id);
         this.conversationId = Objects.requireNonNull(conversationId);
@@ -106,6 +125,7 @@ public class AgentExecution {
         this.toolExecutions = new ArrayList<>(toolExecutions);
         this.startedAt = Objects.requireNonNull(startedAt);
         this.completedAt = completedAt;
+        this.version = version;
     }
 
     /** Rehydrate a persisted execution with its final state, metrics, and tool calls. Persistence-adapter use only. */
@@ -120,11 +140,12 @@ public class AgentExecution {
             Latency latency,
             List<ToolExecution> toolExecutions,
             Instant startedAt,
-            Instant completedAt
+            Instant completedAt,
+            Long version
     ) {
         return new AgentExecution(
                 id, conversationId, modelName, providerName, status,
-                tokenUsage, cost, latency, toolExecutions, startedAt, completedAt);
+                tokenUsage, cost, latency, toolExecutions, startedAt, completedAt, version);
     }
 
     /** Transition to {@code COMPLETED}, recording final token usage, cost, and latency. */
@@ -173,6 +194,24 @@ public class AgentExecution {
         );
 
         this.status = AgentExecutionStatus.TIMEOUT;
+    }
+
+    /**
+     * Record the RAG retrieval confidence (0–1) for this execution. Grounding metadata,
+     * not a lifecycle transition, so it may be set regardless of status (including while
+     * rehydrating a finalised execution).
+     *
+     * @throws IllegalArgumentException if {@code confidence} is outside {@code [0, 1]}
+     */
+    public void recordRetrievalConfidence(double confidence) {
+
+        if (confidence < 0.0 || confidence > 1.0) {
+            throw new IllegalArgumentException(
+                    "Retrieval confidence must be in [0, 1], was " + confidence
+            );
+        }
+
+        this.retrievalConfidence = confidence;
     }
 
     /** Attach a tool execution that was triggered during this agent execution. */
@@ -229,12 +268,21 @@ public class AgentExecution {
         return latency;
     }
 
+    /** RAG retrieval confidence (0–1), or {@code null} if it was not recorded. */
+    public Double getRetrievalConfidence() {
+        return retrievalConfidence;
+    }
+
     public Instant getStartedAt() {
         return startedAt;
     }
 
     public Instant getCompletedAt() {
         return completedAt;
+    }
+
+    public Long getVersion() {
+        return version;
     }
 
     /** Returns an unmodifiable view of all tool executions triggered by this invocation. */
