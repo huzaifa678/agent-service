@@ -8,6 +8,10 @@ dependencies {
 	api project(':agent-domain')
 
 	implementation 'org.springframework.boot:spring-boot-starter-web'
+	// Reactor Core lets the streaming controller return Flux<ServerSentEvent>; Spring MVC
+	// adapts reactive return types over async servlet, so we keep the servlet stack
+	// (and virtual threads) without pulling in the full WebFlux runtime.
+	implementation 'io.projectreactor:reactor-core'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
 
@@ -24,6 +28,10 @@ dependencies {
 	implementation "io.confluent:kafka-avro-serializer:${confluentVersion}"
 
 	implementation 'org.springframework.boot:spring-boot-starter-opentelemetry'
+	// Micrometer facade for custom app metrics (e.g. RAG retrieval confidence). The
+	// concrete registry is micrometer-registry-otlp (already on the classpath); metrics
+	// leave the pod via the existing OpenTelemetry/OTLP pipeline, not a Prometheus scrape.
+	implementation 'io.micrometer:micrometer-core'
 
 	implementation 'org.springframework.cloud:spring-cloud-starter-circuitbreaker-resilience4j'
 

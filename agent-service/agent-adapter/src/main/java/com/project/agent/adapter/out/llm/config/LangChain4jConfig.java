@@ -2,9 +2,11 @@ package com.project.agent.adapter.out.llm.config;
 
 import dev.langchain4j.model.anthropic.AnthropicChatModel;
 import dev.langchain4j.model.chat.ChatModel;
+import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.embedding.EmbeddingModel;
 import dev.langchain4j.model.openai.OpenAiChatModel;
 import dev.langchain4j.model.openai.OpenAiEmbeddingModel;
+import dev.langchain4j.model.openai.OpenAiStreamingChatModel;
 import dev.langchain4j.data.segment.TextSegment;
 import dev.langchain4j.store.embedding.EmbeddingStore;
 import dev.langchain4j.store.embedding.pgvector.PgVectorEmbeddingStore;
@@ -35,8 +37,31 @@ public class LangChain4jConfig {
         return OpenAiChatModel.builder()
                 .apiKey(apiKey)
                 .modelName(modelName)
+                // Enforce the JSON schema attached to each request server-side.
+                .strictJsonSchema(true)
                 .timeout(Duration.ofSeconds(60))
                 .maxRetries(0) // Resilience4j owns retries; disable the client's own.
+                .build();
+    }
+
+    /**
+     * Streaming counterpart of {@link #primaryChatModel}, backing the reactive SSE
+     * endpoint. Single-provider by design: the streaming path does not fail over,
+     * because tokens already emitted to the client cannot be replayed on a second
+     * provider. {@code strictJsonSchema} makes the streamed tokens form the
+     * schema-validated JSON object the client reassembles.
+     */
+    @Bean("primaryStreamingChatModel")
+    @Lazy
+    public StreamingChatModel primaryStreamingChatModel(
+            @Value("${langchain4j.open-ai.api-key:}") String apiKey,
+            @Value("${langchain4j.open-ai.streaming-chat-model:gpt-4o}") String modelName
+    ) {
+        return OpenAiStreamingChatModel.builder()
+                .apiKey(apiKey)
+                .modelName(modelName)
+                .strictJsonSchema(true)
+                .timeout(Duration.ofSeconds(60))
                 .build();
     }
 

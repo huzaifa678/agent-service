@@ -7,51 +7,69 @@ import com.project.agent.application.execution.port.out.llm.streaming.StreamingC
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
+import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import reactor.core.publisher.Sinks;
+import reactor.core.scheduler.Schedulers;
 
 /**
  * REST adapter for the streaming agent-execution endpoint under
- * {@code /api/agent/executions/stream}. Returns Server-Sent Events (tokens, tool calls,
- * completion) through an {@link org.springframework.web.servlet.mvc.method.annotation.SseEmitter}.
+ * {@code /api/v1/agent/executions/stream}. Returns a Reactor {@link Flux} of
+ * Server-Sent Events (tokens, tool calls, completion); Spring MVC adapts the reactive
+ * return type over async servlet, so this stays on the servlet stack (with virtual
+ * threads) without pulling in WebFlux.
+ *
+ * <p>The application streaming use case is callback-based, so the controller bridges it
+ * onto the {@code Flux} through a {@link Sinks.Many}: a {@link SinkStreamingHandler}
+ * feeds each event into the sink. Preparation and the streaming call run on a bounded
+ * elastic worker so the HTTP thread returns the {@code Flux} immediately; a failure
+ * during preparation (e.g. an unknown conversation) is surfaced as a stream error.
  */
 @RestController
-@RequestMapping("/api/agent/executions")
+@RequestMapping("/api/v1/agent/executions")
 @RequiredArgsConstructor
 public class AgentExecutionStreamingController {
 
     private final StreamAgentUseCase streamAgentUseCase;
-    private final SseEventPublisher publisher;
 
     @PostMapping(
             value = "/stream",
             produces = MediaType.TEXT_EVENT_STREAM_VALUE
     )
-    public SseEmitter stream(
+    public Flux<ServerSentEvent<Object>> stream(
             @Valid @RequestBody RunAgentRequest request
     ) {
-        SseEmitter emitter = new SseEmitter(0L);
+
+        Sinks.Many<ServerSentEvent<Object>> sink =
+                Sinks.many().unicast().onBackpressureBuffer();
 
         StreamingChatHandler handler =
-                new SseStreamingHandler(
-                        emitter,
-                        publisher
-                );
+                new SinkStreamingHandler(sink);
 
-        streamAgentUseCase.stream(
+        RunAgentCommand command =
                 new RunAgentCommand(
                         request.conversationId(),
                         request.userMessage(),
                         request.modelName(),
                         request.providerName(),
                         request.enabledTools()
-                ),
-                handler
-        );
+                );
 
-        return emitter;
+        Mono.fromRunnable(() ->
+                        streamAgentUseCase.stream(command, handler)
+                )
+                .subscribeOn(Schedulers.boundedElastic())
+                .subscribe(
+                        unused -> {
+                        },
+                        sink::tryEmitError
+                );
+
+        return sink.asFlux();
     }
 }
