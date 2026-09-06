@@ -15,7 +15,7 @@ import java.nio.charset.StandardCharsets;
 public class ClasspathPromptTemplateAdapter implements PromptTemplatePort {
 
     private static final String PROMPT_DIRECTORY = "prompts/";
-    private static final String EXTENSION = ".txt";
+    private static final String EXTENSION = ".md";
 
     @Override
     public String load(String templateName) {
