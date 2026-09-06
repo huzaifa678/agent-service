@@ -3,9 +3,10 @@ package com.project.agent.application.execution.service.workflow;
 import com.project.agent.application.conversation.port.out.ConversationRepositoryPort;
 import com.project.agent.application.execution.port.in.command.RunAgentCommand;
 import com.project.agent.application.execution.port.out.conversation.AgentExecutionRepositoryPort;
-import com.project.agent.application.execution.port.out.llm.model.ChatMessage;
 import com.project.agent.application.execution.port.out.llm.model.ChatResult;
 import com.project.agent.application.execution.service.common.*;
+import com.project.agent.application.execution.service.harness.AgentMemory;
+import com.project.agent.application.execution.service.harness.MemoryRecall;
 import com.project.agent.application.shared.port.out.DomainEventPublisherPort;
 import com.project.agent.domain.conversation.Conversation;
 import com.project.agent.domain.conversation.exception.ConversationNotFoundException;
@@ -27,9 +28,11 @@ import java.util.UUID;
 
 /**
  * Orchestrates the non-LLM steps of an agent execution: validates the conversation and
- * prompt, assembles the prompt (with RAG context), runs tools, and persists/records the
- * execution and its domain events. {@link #prepare} builds the {@link AgentExecutionContext}
- * before the LLM call; {@link #finish} records the result afterwards.
+ * prompt, assembles the working context from {@link AgentMemory} (short-term + long-term
+ * tiers), runs tools, and persists/records the execution and its domain events. On completion
+ * the answer is committed back to memory. {@link #prepare} builds the
+ * {@link AgentExecutionContext} before the LLM call; {@link #finish} records the result
+ * afterwards.
  */
 @Service
 @RequiredArgsConstructor
@@ -45,11 +48,9 @@ public class AgentExecutionWorkflow {
 
     private final PromptValidationService promptValidationService;
 
-    private final PromptAssemblyService promptAssemblyService;
-
     private final ToolExecutionService toolExecutionService;
 
-    private final RagService ragService;
+    private final AgentMemory agentMemory;
 
     /**
      * Performs all preparation required before invoking the LLM.
@@ -97,17 +98,14 @@ public class AgentExecutionWorkflow {
 
         conversation.addMessage(userMessage);
 
-        List<ChatMessage> prompt =
-                promptAssemblyService.buildHistory(
-                        conversation
-                );
-
-        prompt.addAll(
-                ragService.retrieveContext(
-                        conversationId,
+        // Assemble the working context from both memory tiers (short-term recent turns +
+        // policy-gated long-term recall). The user message added above is now part of the
+        // short-term window.
+        MemoryRecall recall =
+                agentMemory.recall(
+                        conversation,
                         command.userMessage()
-                )
-        );
+                );
 
         AgentExecution execution =
                 AgentExecution.start(
@@ -117,12 +115,14 @@ public class AgentExecutionWorkflow {
                         provider
                 );
 
+        execution.recordRetrievalConfidence(recall.retrievalConfidence());
+
         return AgentExecutionContext.builder()
                 .conversation(conversation)
                 .execution(execution)
                 .model(model)
                 .provider(provider)
-                .prompt(prompt)
+                .prompt(recall.context())
                 .enabledTools(enabledTools)
                 .build();
     }
@@ -165,7 +165,7 @@ public class AgentExecutionWorkflow {
                 context.conversation()
         );
 
-        ragService.indexAssistantResponse(
+        agentMemory.remember(
                 context.execution().getConversationId(),
                 assistantMessage
         );

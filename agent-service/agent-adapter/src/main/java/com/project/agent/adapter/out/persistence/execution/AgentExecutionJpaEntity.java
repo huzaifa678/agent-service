@@ -9,6 +9,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -34,6 +35,14 @@ public class AgentExecutionJpaEntity {
     @Id
     private UUID id;
 
+    /**
+     * Optimistic-lock version. Hibernate stamps it on insert and checks/increments
+     * it on update (throwing OptimisticLockException on a concurrent modification),
+     * guarding the execution's load-modify-save status transitions.
+     */
+    @Version
+    private Long version;
+
     @Column(nullable = false)
     private UUID conversationId;
 
@@ -57,6 +66,10 @@ public class AgentExecutionJpaEntity {
     private String costCurrency;
 
     private long latencyMillis;
+
+    /** RAG retrieval confidence (0–1); nullable for executions recorded before it was tracked. */
+    @Column(name = "retrieval_confidence")
+    private Double retrievalConfidence;
 
     @Column(nullable = false)
     private Instant startedAt;

@@ -22,6 +22,9 @@ jobs:
           curl -sSfL "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz" \
             | sudo tar -xz -C /usr/local/bin conftest
 
+      - name: Agent memory policy unit tests (conftest / OPA)
+        run: conftest verify -p policy/agent
+
       - name: Dockerfile Policy as Code (conftest / OPA)
         run: |
           conftest verify -p policy/docker

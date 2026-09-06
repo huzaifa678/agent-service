@@ -42,12 +42,7 @@ public class PromptAssemblyService {
 
         List<ChatMessage> history = new ArrayList<>();
 
-        history.add(
-                new ChatMessage(
-                        MessageRole.SYSTEM,
-                        promptTemplatePort.load(DEFAULT_TEMPLATE)
-                )
-        );
+        history.add(systemMessage());
 
         for (Message message : conversation.getMessages()) {
 
@@ -60,5 +55,17 @@ public class PromptAssemblyService {
         }
 
         return history;
+    }
+
+    /**
+     * The configured system prompt as a single SYSTEM {@link ChatMessage}. Exposed so the
+     * memory harness can assemble a prompt tier by tier (system → short-term → long-term)
+     * rather than always taking the full history.
+     */
+    public ChatMessage systemMessage() {
+        return new ChatMessage(
+                MessageRole.SYSTEM,
+                promptTemplatePort.load(DEFAULT_TEMPLATE)
+        );
     }
 }
