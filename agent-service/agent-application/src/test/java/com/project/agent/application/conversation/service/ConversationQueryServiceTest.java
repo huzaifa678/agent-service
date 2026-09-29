@@ -1,6 +1,6 @@
 package com.project.agent.application.conversation.service;
 
-import com.project.agent.application.conversation.port.out.ConversationRepositoryPort;
+import com.project.agent.application.conversation.port.out.ConversationReadModelPort;
 import com.project.agent.domain.conversation.Conversation;
 import com.project.agent.domain.conversation.exception.ConversationNotFoundException;
 import com.project.agent.domain.message.Message;
@@ -30,7 +30,7 @@ import static org.mockito.Mockito.when;
 public class ConversationQueryServiceTest {
 
     @Mock
-    private ConversationRepositoryPort conversationRepository;
+    private ConversationReadModelPort conversationReadModel;
 
     @InjectMocks
     private ConversationQueryService service;
@@ -49,20 +49,20 @@ public class ConversationQueryServiceTest {
         UUID id = UUID.randomUUID();
         Conversation conversation = conversation(id);
 
-        when(conversationRepository.findById(ConversationId.of(id)))
+        when(conversationReadModel.findById(ConversationId.of(id)))
                 .thenReturn(Optional.of(conversation));
 
         Conversation result = service.getById(id);
 
         assertSame(conversation, result);
-        verify(conversationRepository).findById(ConversationId.of(id));
+        verify(conversationReadModel).findById(ConversationId.of(id));
     }
 
     @Test
     void getById_notFound_throws() {
         UUID id = UUID.randomUUID();
 
-        when(conversationRepository.findById(ConversationId.of(id)))
+        when(conversationReadModel.findById(ConversationId.of(id)))
                 .thenReturn(Optional.empty());
 
         assertThrows(
@@ -80,14 +80,14 @@ public class ConversationQueryServiceTest {
                 conversation(UUID.randomUUID())
         );
 
-        when(conversationRepository.findByUserId(UserId.of(userId)))
+        when(conversationReadModel.findByUserId(UserId.of(userId)))
                 .thenReturn(conversations);
 
         List<Conversation> result = service.byUser(userId);
 
         assertEquals(2, result.size());
         assertSame(conversations, result);
-        verify(conversationRepository).findByUserId(UserId.of(userId));
+        verify(conversationReadModel).findByUserId(UserId.of(userId));
     }
 
     @Test
@@ -109,7 +109,7 @@ public class ConversationQueryServiceTest {
                 TokenUsage.of(2, 3)
         ));
 
-        when(conversationRepository.findById(ConversationId.of(id)))
+        when(conversationReadModel.findById(ConversationId.of(id)))
                 .thenReturn(Optional.of(conversation));
 
         List<Message> messages = service.messages(id);
@@ -118,14 +118,14 @@ public class ConversationQueryServiceTest {
         assertEquals("Hello", messages.get(0).getContent().value());
         assertEquals("Hi!", messages.get(1).getContent().value());
 
-        verify(conversationRepository).findById(ConversationId.of(id));
+        verify(conversationReadModel).findById(ConversationId.of(id));
     }
 
     @Test
     void messages_conversationNotFound_throws() {
         UUID id = UUID.randomUUID();
 
-        when(conversationRepository.findById(ConversationId.of(id)))
+        when(conversationReadModel.findById(ConversationId.of(id)))
                 .thenReturn(Optional.empty());
 
         assertThrows(

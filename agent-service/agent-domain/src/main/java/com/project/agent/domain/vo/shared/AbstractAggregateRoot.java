@@ -27,4 +27,15 @@ public abstract class AbstractAggregateRoot {
     public void clearDomainEvents() {
         domainEvents.clear();
     }
+
+    /**
+     * Atomically returns a snapshot of the pending events and clears the internal
+     * list. Event-sourced repositories drain events this way so they are appended
+     * to the event store exactly once per {@code save}.
+     */
+    protected List<DomainEvent> drainDomainEvents() {
+        List<DomainEvent> drained = new ArrayList<>(domainEvents);
+        domainEvents.clear();
+        return drained;
+    }
 }

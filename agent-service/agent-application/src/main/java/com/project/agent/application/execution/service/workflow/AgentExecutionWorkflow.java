@@ -7,7 +7,6 @@ import com.project.agent.application.execution.port.out.llm.model.ChatResult;
 import com.project.agent.application.execution.service.common.*;
 import com.project.agent.application.execution.service.harness.AgentMemory;
 import com.project.agent.application.execution.service.harness.MemoryRecall;
-import com.project.agent.application.shared.port.out.DomainEventPublisherPort;
 import com.project.agent.domain.conversation.Conversation;
 import com.project.agent.domain.conversation.exception.ConversationNotFoundException;
 import com.project.agent.domain.execution.agent.AgentExecution;
@@ -41,8 +40,6 @@ public class AgentExecutionWorkflow {
     private final ConversationRepositoryPort conversationRepository;
 
     private final AgentExecutionRepositoryPort agentExecutionRepository;
-
-    private final DomainEventPublisherPort eventPublisher;
 
     private final ConversationValidationService conversationValidationService;
 
@@ -169,12 +166,6 @@ public class AgentExecutionWorkflow {
                 context.execution().getConversationId(),
                 assistantMessage
         );
-
-        eventPublisher.publishAll(
-                context.conversation().domainEvents()
-        );
-
-        context.conversation().clearDomainEvents();
 
         return savedExecution;
     }
