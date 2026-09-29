@@ -3,7 +3,6 @@ package com.project.agent.application.conversation.service;
 import com.project.agent.application.conversation.port.in.AddMessageCommand;
 import com.project.agent.application.conversation.port.in.StartConversationCommand;
 import com.project.agent.application.conversation.port.out.ConversationRepositoryPort;
-import com.project.agent.application.shared.port.out.DomainEventPublisherPort;
 import com.project.agent.domain.conversation.Conversation;
 import com.project.agent.domain.conversation.exception.ConversationAlreadyArchivedException;
 import com.project.agent.domain.conversation.exception.ConversationDeletedException;
@@ -35,8 +34,6 @@ class ConversationCommandServiceTest {
 
     @Mock
     private ConversationRepositoryPort conversationRepository;
-    @Mock
-    private DomainEventPublisherPort eventPublisher;
 
     @InjectMocks
     private ConversationCommandService service;
@@ -51,7 +48,7 @@ class ConversationCommandServiceTest {
     }
 
     @Test
-    void start_persistsAndPublishesEvents() {
+    void start_persistsAggregate() {
         UUID tenantId = UUID.randomUUID();
         when(conversationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
@@ -59,8 +56,9 @@ class ConversationCommandServiceTest {
 
         assertNotNull(result);
         assertEquals(tenantId, result.getTenantId().value());
+        // Events are appended durably by the repository (event store) and relayed to Kafka
+        // out of band, so the command service no longer publishes directly.
         verify(conversationRepository).save(any());
-        verify(eventPublisher).publishAll(any());
     }
 
     @Test

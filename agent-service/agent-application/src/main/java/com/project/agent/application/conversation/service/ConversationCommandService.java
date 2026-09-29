@@ -9,7 +9,6 @@ import com.project.agent.application.conversation.port.in.RenameConversationUseC
 import com.project.agent.application.conversation.port.in.StartConversationCommand;
 import com.project.agent.application.conversation.port.in.StartConversationUseCase;
 import com.project.agent.application.conversation.port.out.ConversationRepositoryPort;
-import com.project.agent.application.shared.port.out.DomainEventPublisherPort;
 import com.project.agent.domain.conversation.Conversation;
 import com.project.agent.domain.conversation.exception.ConversationAlreadyArchivedException;
 import com.project.agent.domain.conversation.exception.ConversationDeletedException;
@@ -47,7 +46,6 @@ public class ConversationCommandService implements
         DeleteConversationUseCase {
 
     private final ConversationRepositoryPort conversationRepository;
-    private final DomainEventPublisherPort eventPublisher;
 
     @Override
     public Conversation start(StartConversationCommand command) {
@@ -57,9 +55,7 @@ public class ConversationCommandService implements
                 UserId.of(command.userId()),
                 ConversationTitle.of(command.title())
         );
-        Conversation saved = conversationRepository.save(conversation);
-        publishAndClear(conversation);
-        return saved;
+        return conversationRepository.save(conversation);
     }
 
     @Override
@@ -70,7 +66,6 @@ public class ConversationCommandService implements
         }
         conversation.rename(ConversationTitle.of(command.newTitle()));
         conversationRepository.save(conversation);
-        publishAndClear(conversation);
     }
 
     @Override
@@ -86,9 +81,7 @@ public class ConversationCommandService implements
         );
         conversation.addMessage(message);
 
-        Conversation saved = conversationRepository.save(conversation);
-        publishAndClear(conversation);
-        return saved;
+        return conversationRepository.save(conversation);
     }
 
     @Override
@@ -100,7 +93,6 @@ public class ConversationCommandService implements
             case ACTIVE -> conversation.archive();
         }
         conversationRepository.save(conversation);
-        publishAndClear(conversation);
     }
 
     @Override
@@ -108,7 +100,6 @@ public class ConversationCommandService implements
         Conversation conversation = load(ConversationId.of(conversationId));
         conversation.delete();
         conversationRepository.save(conversation);
-        publishAndClear(conversation);
     }
 
     private Conversation load(ConversationId id) {
@@ -124,10 +115,5 @@ public class ConversationCommandService implements
                     "Cannot add a message to an archived conversation.");
             case ACTIVE -> { /* ok */ }
         }
-    }
-
-    private void publishAndClear(Conversation conversation) {
-        eventPublisher.publishAll(conversation.domainEvents());
-        conversation.clearDomainEvents();
     }
 }
