@@ -73,6 +73,40 @@ graph TD
 
 > gRPC client/server dependencies are present but no downstream service is wired yet, so gRPC is omitted from the diagram above.
 
+### Event Sourcing (Conversation)
+
+The **`Conversation` aggregate is event-sourced** — it is the reference implementation of the
+pattern for the platform's heavy services. Its state is the fold of an append-only event stream
+rather than a mutable row:
+
+- **Events are the source of truth.** Behaviour methods (`start`, `rename`, `addMessage`,
+  `archive`, `delete`) validate invariants, then raise a `ConversationEvent` (`Started`,
+  `Renamed`, `MessageAdded`, …) that is both applied to in-memory state and recorded. Events are
+  appended to `conversation_event_store`; the unique `(aggregate_id, sequence)` constraint is the
+  **optimistic-concurrency** guard on write.
+- **Snapshots bound replay.** Every _N_ events (`agent.conversation.snapshot-interval`, default 50)
+  the aggregate's full state is written to `conversation_snapshot`. Loading reads the latest
+  snapshot and replays only the events after it.
+- **CQRS read model.** The existing `conversations` / `messages` tables are now a **projection**,
+  upserted in the same transaction as the append. The query side and the pgvector RAG index read
+  from the projection and never replay events.
+- **Transactional outbox, not a dual write.** Publishing to Kafka is decoupled from the write:
+  `ConversationEventRelay` polls the event store for unpublished rows and relays them
+  (keyed by aggregate id, so a conversation's events stay ordered on one partition), marking them
+  published only after the broker acks. A crash between "stored" and "published" just leaves the
+  event for the next poll — delivery is at-least-once, so consumers dedupe on the `eventId` header.
+
+```
+command → aggregate raises events → EventSourcedConversationRepository.save
+        → append to conversation_event_store (optimistic concurrency)
+        → project into conversations/messages (same tx)
+        → snapshot every N events
+ConversationEventRelay (out of band) → drain unpublished → Kafka (agent.conversation.events)
+```
+
+Schema for `conversation_event_store` / `conversation_snapshot` ships as Liquibase changesets in
+the CD repo (`charts/agent-service/migrations/changelog.sql`), applied by the Argo PreSync hook.
+
 ## Agent Harness & Memory
 
 The agent's memory sits behind a **harness** (application layer, `execution.service.harness`)
