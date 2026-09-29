@@ -56,7 +56,8 @@ class ConversationPersistenceAdapterIT extends PostgreSQLContainerConfig {
                 TokenUsage.of(10, 0)
         ));
 
-        Conversation saved = adapter.save(conversation);
+        adapter.project(conversation);
+        Conversation saved = adapter.findById(conversation.getId()).orElseThrow();
 
         assertThat(saved.getId()).isEqualTo(conversation.getId());
         assertThat(saved.getTitle()).isEqualTo(ConversationTitle.of("Persistence Test"));
@@ -73,7 +74,7 @@ class ConversationPersistenceAdapterIT extends PostgreSQLContainerConfig {
                 UserId.of(UUID.randomUUID()),
                 ConversationTitle.of("Find Me")
         );
-        adapter.save(conversation);
+        adapter.project(conversation);
 
         Optional<Conversation> found = adapter.findById(conversation.getId());
 
@@ -105,8 +106,8 @@ class ConversationPersistenceAdapterIT extends PostgreSQLContainerConfig {
                 ConversationTitle.of("Conv 2")
         );
 
-        adapter.save(conv1);
-        adapter.save(conv2);
+        adapter.project(conv1);
+        adapter.project(conv2);
 
         List<Conversation> results = adapter.findByUserId(UserId.of(userId));
 
@@ -131,7 +132,7 @@ class ConversationPersistenceAdapterIT extends PostgreSQLContainerConfig {
                 TokenUsage.of(5, 0)
         ));
 
-        adapter.save(conversation);
+        adapter.project(conversation);
 
         ConversationJpaEntity jpaEntity = repository.findById(id).orElseThrow();
         assertThat(jpaEntity.getTitle()).isEqualTo("Round Trip");
