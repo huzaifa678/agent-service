@@ -34,8 +34,6 @@ jobs:
 
       - name: Run tests
         run: ./gradlew test --no-daemon
-        env:
-          STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
 
       - name: Run lint & Code quality check
         run: sonar-scanner
