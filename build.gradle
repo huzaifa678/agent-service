@@ -89,5 +89,7 @@ subprojects {
 
     tasks.withType(JavaCompile).configureEach {
         options.encoding = 'UTF-8'
+        // For PathVariables path resolution.
+        options.compilerArgs.add('-parameters')
     }
 }

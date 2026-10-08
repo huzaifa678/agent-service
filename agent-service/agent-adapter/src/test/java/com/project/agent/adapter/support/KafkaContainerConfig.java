@@ -2,21 +2,22 @@ package com.project.agent.adapter.support;
 
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.kafka.KafkaContainer;
 import org.testcontainers.utility.DockerImageName;
 
-@Testcontainers
-public abstract class KafkaContainerConfig {
+// Extends the Postgres config so a @SpringBootTest using Kafka also gets a datasource
+public abstract class KafkaContainerConfig extends PostgreSQLContainerConfig {
 
-    @Container
     static final KafkaContainer kafka =
             new KafkaContainer(
                     DockerImageName.parse(
-                            "confluentinc/cp-kafka:7.6.1"
+                            "apache/kafka:3.8.0"
                     )
             );
+
+    static {
+        kafka.start();
+    }
 
     protected static KafkaContainer kafkaContainer() {
         return kafka;
