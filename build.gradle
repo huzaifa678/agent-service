@@ -25,14 +25,6 @@ allprojects {
         maven {
             url = "https://packages.confluent.io/maven/"
         }
-        maven {
-            name = "buf"
-            url = "https://buf.build/gen/maven"
-            credentials(HttpHeaderCredentials)
-            authentication {
-                header(HttpHeaderAuthentication)
-            }
-        }
     }
 }
 
