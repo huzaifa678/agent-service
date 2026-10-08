@@ -3,6 +3,7 @@ package com.project.agent.adapter.out.persistence.conversation;
 import com.project.agent.application.conversation.port.out.ConversationProjectionPort;
 import com.project.agent.application.conversation.port.out.ConversationReadModelPort;
 import com.project.agent.domain.conversation.Conversation;
+import com.project.agent.domain.conversation.ConversationStatus;
 import com.project.agent.domain.vo.identity.ConversationId;
 import com.project.agent.domain.vo.identity.UserId;
 import lombok.RequiredArgsConstructor;
@@ -27,6 +28,14 @@ public class ConversationPersistenceAdapter implements ConversationProjectionPor
 
     @Override
     public void project(Conversation conversation) {
+        // DELETED is a soft delete that is excluded from normal queries (see ConversationStatus),
+        // so drop the row from the read model rather than keeping a tombstone that findById /
+        // findByUserId would still serve. The event stream in the event store remains the record.
+        if (conversation.getStatus() == ConversationStatus.DELETED) {
+            repository.deleteById(conversation.getId().value());
+            return;
+        }
+
         // Write-only: unlike the old repository.save this deliberately does NOT map the persisted
         // entity back to the domain. The event-sourced repository already holds the authoritative
         // aggregate (with its correct version) and returns that; round-tripping through the

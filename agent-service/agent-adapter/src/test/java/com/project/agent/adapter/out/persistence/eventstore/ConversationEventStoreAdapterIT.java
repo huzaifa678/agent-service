@@ -81,11 +81,13 @@ class ConversationEventStoreAdapterIT extends PostgreSQLContainerConfig {
         eventStore.append(conversation.getId(), 0L, first);
 
         // A second writer that still thinks the stream is empty tries to write sequence 1 again.
-        Conversation clash = Conversation.replay(List.of(
+        // Build the clashing event directly: replay() hydrates state without pending events, so
+        // pullPendingEvents() would be empty and append() a no-op.
+        List<ConversationEvent> clash = List.of(
                 ConversationEvent.Started.of(conversation.getId().value(), 1L,
-                        UUID.randomUUID(), UUID.randomUUID(), "Clash")));
+                        UUID.randomUUID(), UUID.randomUUID(), "Clash"));
         assertThatThrownBy(() ->
-                eventStore.append(conversation.getId(), 0L, clash.pullPendingEvents()))
+                eventStore.append(conversation.getId(), 0L, clash))
                 .isInstanceOf(OptimisticLockingFailureException.class);
     }
 

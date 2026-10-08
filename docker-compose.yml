@@ -1,0 +1,78 @@
+# Local development stack for agent-service.
+#   docker compose up --build
+# Brings up the service with its backing dependencies on an isolated network.
+# The app talks to them by service name; only the app port and documented infra
+# ports are published to the host. Secrets are read from your shell env (never
+# baked in) — export OPENAI_API_KEY / ANTHROPIC_API_KEY if you exercise the LLM
+# paths; without them the non-LLM paths still boot.
+name: agent-service
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16 # pgvector: long-term memory embeddings (dim 1536)
+    environment:
+      POSTGRES_DB: agent_db
+      POSTGRES_USER: agent_user
+      POSTGRES_PASSWORD: agent_password
+    ports:
+      - "5434:5432" # agent's documented host port
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agent_user -d agent_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  kafka:
+    image: confluentinc/cp-kafka:7.7.1
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  agent-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/agent_db
+      SPRING_DATASOURCE_USERNAME: agent_user
+      SPRING_DATASOURCE_PASSWORD: agent_password
+      # ddl-auto=update bootstraps the schema locally (prod applies Liquibase out of band).
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      AGENT_VECTOR_HOST: postgres
+      AGENT_VECTOR_PORT: "5432"
+      # No OTLP collector in the local stack — turn exporters off so startup is clean.
+      MANAGEMENT_OTLP_METRICS_EXPORT_ENABLED: "false"
+      MANAGEMENT_TRACING_EXPORT_ENABLED: "false"
+      MANAGEMENT_LOGGING_EXPORT_OTLP_ENABLED: "false"
+      SPRINGDOC_ENABLED: "true"
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    ports:
+      - "8083:8083"
+
+volumes:
+  pgdata:

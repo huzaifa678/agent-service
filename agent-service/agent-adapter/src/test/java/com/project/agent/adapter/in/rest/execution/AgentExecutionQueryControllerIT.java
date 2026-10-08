@@ -135,7 +135,9 @@ class AgentExecutionQueryControllerIT extends PostgreSQLContainerConfig {
                 .completionTokens(domain.getTokenUsage().completionTokens())
                 .costAmount(domain.getCost().amount())
                 .costCurrency(domain.getCost().currency().getCurrencyCode())
-                .latencyMillis(domain.getLatency().toMillis())
+                // start()/complete() run in the same instant, so the domain latency is ~0. Seed a
+                // fixed, non-zero value so the read endpoint's latencyMillis round-trip is verifiable.
+                .latencyMillis(1500L)
                 .startedAt(domain.getStartedAt())
                 .completedAt(domain.getCompletedAt() != null ? domain.getCompletedAt() : Instant.now())
                 .build();
