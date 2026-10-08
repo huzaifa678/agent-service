@@ -13,10 +13,6 @@ jobs:
       contents: read
       packages: read
 
-    defaults:
-      run:
-        working-directory: agent-service/agent-service
-
     steps:
       - uses: actions/checkout@v6
 
@@ -61,7 +57,7 @@ jobs:
       - name: Build image (load locally for scanning)
         uses: docker/build-push-action@v7
         with:
-          context: agent-service
+          context: .
           push: false
           load: true
           tags: ${{ steps.ecr.outputs.url }}:sha-${{ github.sha }}
