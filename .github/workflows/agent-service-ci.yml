@@ -15,7 +15,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: agent-service
+        working-directory: agent-service/agent-service
 
     steps:
       - uses: actions/checkout@v6
