@@ -28,8 +28,9 @@ FROM eclipse-temurin:21-jre-alpine@sha256:51ab5e3302e7141ce665ca3ea85e8b5cd648ea
 WORKDIR /app
 
 # Patch OS packages carried by the base image: CVE-2026-77214 (HIGH) in expat is
-# fixed in 2.9.0-r0. Refresh it here (base digest is pinned, so this is the knob).
-RUN apk upgrade --no-cache expat
+# fixed in 2.9.0-r0. The installed package is `libexpat` (not `expat`), so name it
+# exactly or the upgrade is a silent no-op. Base digest is pinned, so this is the knob.
+RUN apk upgrade --no-cache libexpat
 
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
