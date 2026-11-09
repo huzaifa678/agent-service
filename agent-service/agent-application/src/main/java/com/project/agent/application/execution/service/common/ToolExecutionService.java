@@ -3,11 +3,13 @@ package com.project.agent.application.execution.service.common;
 import com.project.agent.application.execution.port.out.tool.ToolCall;
 import com.project.agent.application.execution.port.out.tool.ToolExecutorPort;
 import com.project.agent.application.execution.port.out.tool.ToolResult;
+import com.project.agent.application.execution.service.harness.AgentToolHarness;
 import com.project.agent.domain.execution.agent.AgentExecution;
 import com.project.agent.domain.execution.tool.ToolExecution;
 import com.project.agent.domain.execution.tool.exception.InvalidToolResponseException;
 import com.project.agent.domain.execution.tool.exception.ToolExecutionAlreadyCompletedException;
 import com.project.agent.domain.execution.tool.exception.ToolInvocationException;
+import com.project.agent.domain.execution.tool.exception.ToolNotAuthorizedException;
 import com.project.agent.domain.execution.tool.exception.ToolTimeoutException;
 import com.project.agent.domain.execution.tool.exception.UnsupportedToolException;
 import com.project.agent.domain.vo.ai.ToolName;
@@ -47,6 +49,8 @@ public class ToolExecutionService {
 
     private final ToolExecutorPort toolExecutor;
 
+    private final AgentToolHarness toolHarness;
+
     /**
      * Executes every tool requested by the language model.
      */
@@ -66,7 +70,9 @@ public class ToolExecutionService {
 
     /**
      * Validates all enabled tools supplied by the client before an
-     * LLM request is made.
+     * LLM request is made. Each tool must be both <em>supported</em> by the build and
+     * <em>authorized</em> by the tool-governance policy ({@link AgentToolHarness}); an
+     * unauthorized tool is rejected pre-flight so it is never offered to the model.
      */
     public List<String> validateTools(List<String> tools) {
 
@@ -75,6 +81,7 @@ public class ToolExecutionService {
         }
 
         tools.forEach(this::validateTool);
+        tools.forEach(this::authorizeEnabledTool);
 
         return tools;
     }
@@ -91,6 +98,15 @@ public class ToolExecutionService {
                 ToolName.of(call.toolName()),
                 MessageContent.of(call.request())
         );
+
+        // Governance gate: a supported tool the model asked for is still subject to the tool
+        // policy. A denied call is recorded as a failed (blocked) tool execution and skipped —
+        // the turn still answers, it just answers without that tool's result.
+        if (!toolHarness.authorizeInvocation(call.toolName(), call.request())) {
+            fail(toolExecution);
+            execution.addToolExecution(toolExecution);
+            return;
+        }
 
         try {
 
@@ -123,6 +139,13 @@ public class ToolExecutionService {
 
         if (!SUPPORTED_TOOLS.contains(toolName)) {
             throw new UnsupportedToolException(toolName);
+        }
+    }
+
+    private void authorizeEnabledTool(String toolName) {
+
+        if (!toolHarness.authorizeEnablement(toolName)) {
+            throw new ToolNotAuthorizedException(toolName);
         }
     }
 
