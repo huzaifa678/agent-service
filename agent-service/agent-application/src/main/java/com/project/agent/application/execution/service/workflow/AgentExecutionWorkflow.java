@@ -5,6 +5,8 @@ import com.project.agent.application.execution.port.in.command.RunAgentCommand;
 import com.project.agent.application.execution.port.out.conversation.AgentExecutionRepositoryPort;
 import com.project.agent.application.execution.port.out.llm.model.ChatResult;
 import com.project.agent.application.execution.service.common.*;
+import com.project.agent.application.execution.service.harness.AgentBudgetGuard;
+import com.project.agent.application.execution.service.harness.AgentGuardrailHarness;
 import com.project.agent.application.execution.service.harness.AgentMemory;
 import com.project.agent.application.execution.service.harness.MemoryRecall;
 import com.project.agent.domain.conversation.Conversation;
@@ -49,6 +51,10 @@ public class AgentExecutionWorkflow {
 
     private final AgentMemory agentMemory;
 
+    private final AgentGuardrailHarness guardrailHarness;
+
+    private final AgentBudgetGuard budgetGuard;
+
     /**
      * Performs all preparation required before invoking the LLM.
      */
@@ -68,6 +74,14 @@ public class AgentExecutionWorkflow {
                         );
 
         conversationValidationService.validate(conversation);
+
+        // Cost governance: refuse the turn before any LLM spend if this conversation has
+        // already exhausted its token/cost budget.
+        budgetGuard.check(conversationId);
+
+        // Input guardrail: screen the user's message for prompt-injection / jailbreak before
+        // it is added to the conversation, assembled into the prompt, or captured into memory.
+        guardrailHarness.guardInput(conversationId, command.userMessage());
 
         ModelName model =
                 ModelName.of(command.modelName());
@@ -132,6 +146,19 @@ public class AgentExecutionWorkflow {
             ChatResult result
     ) {
 
+        ConversationId conversationId =
+                context.execution().getConversationId();
+
+        // Output guardrail: screen the answer (leakage, toxicity, minimum grounding) before any
+        // tool side-effects are recorded, the answer is returned, or it is remembered. A block
+        // aborts finalisation — nothing is persisted.
+        Double grounding = context.execution().getRetrievalConfidence();
+        guardrailHarness.guardOutput(
+                conversationId,
+                result.content(),
+                grounding == null ? 0.0 : grounding
+        );
+
         toolExecutionService.execute(
                 context.execution(),
                 result.toolCalls()
@@ -163,8 +190,16 @@ public class AgentExecutionWorkflow {
         );
 
         agentMemory.remember(
-                context.execution().getConversationId(),
+                conversationId,
                 assistantMessage
+        );
+
+        // Cost governance: accumulate this turn's token usage and cost against the
+        // conversation's budget so a later turn can be refused once a ceiling is reached.
+        budgetGuard.record(
+                conversationId,
+                result.tokenUsage(),
+                result.cost()
         );
 
         return savedExecution;
