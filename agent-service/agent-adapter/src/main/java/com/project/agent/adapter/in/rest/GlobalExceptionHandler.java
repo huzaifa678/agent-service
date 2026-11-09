@@ -1,6 +1,9 @@
 package com.project.agent.adapter.in.rest;
 
 import com.project.agent.adapter.in.rest.dto.ErrorResponse;
+import com.project.agent.application.execution.exception.BudgetExceededException;
+import com.project.agent.application.execution.exception.InputGuardrailViolationException;
+import com.project.agent.application.execution.exception.OutputGuardrailViolationException;
 import com.project.agent.application.shared.exception.ApplicationException;
 import com.project.agent.application.shared.exception.ResourceNotFoundException;
 import com.project.agent.domain.exception.AggregateNotFoundException;
@@ -50,6 +53,26 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_GATEWAY)
     public ErrorResponse handleDomain(DomainException e) {
         log.warn("Domain/infrastructure failure", e);
+        return ErrorResponse.of(e.getClass().getSimpleName(), e.getMessage());
+    }
+
+    @ExceptionHandler(BudgetExceededException.class)
+    @ResponseStatus(HttpStatus.TOO_MANY_REQUESTS)
+    public ErrorResponse handleBudgetExceeded(BudgetExceededException e) {
+        return ErrorResponse.of(e.getClass().getSimpleName(), e.getMessage());
+    }
+
+    @ExceptionHandler(InputGuardrailViolationException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public ErrorResponse handleInputGuardrail(InputGuardrailViolationException e) {
+        log.info("Input blocked by guardrail policy: {}", e.getMessage());
+        return ErrorResponse.of(e.getClass().getSimpleName(), e.getMessage());
+    }
+
+    @ExceptionHandler(OutputGuardrailViolationException.class)
+    @ResponseStatus(HttpStatus.UNPROCESSABLE_ENTITY)
+    public ErrorResponse handleOutputGuardrail(OutputGuardrailViolationException e) {
+        log.warn("Answer withheld by guardrail policy: {}", e.getMessage());
         return ErrorResponse.of(e.getClass().getSimpleName(), e.getMessage());
     }
 
