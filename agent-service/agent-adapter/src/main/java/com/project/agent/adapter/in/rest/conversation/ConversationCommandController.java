@@ -38,7 +38,8 @@ public class ConversationCommandController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public ConversationResponse start(
-            @Valid @RequestBody StartConversationRequest request
+            @Valid @RequestBody StartConversationRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
     ) {
 
         return mapper.toResponse(
@@ -46,7 +47,8 @@ public class ConversationCommandController {
                         new StartConversationCommand(
                                 request.tenantId(),
                                 request.userId(),
-                                request.title()
+                                request.title(),
+                                idempotencyKey
                         )
                 )
         );
@@ -55,7 +57,8 @@ public class ConversationCommandController {
     @PostMapping("/{id}/messages")
     public ConversationResponse addMessage(
             @PathVariable UUID id,
-            @Valid @RequestBody AddMessageRequest request
+            @Valid @RequestBody AddMessageRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
     ) {
 
         return mapper.toResponse(
@@ -65,7 +68,8 @@ public class ConversationCommandController {
                                 request.role(),
                                 request.content(),
                                 request.promptTokens(),
-                                request.completionTokens()
+                                request.completionTokens(),
+                                idempotencyKey
                         )
                 )
         );

@@ -52,7 +52,7 @@ class ConversationCommandServiceTest {
         UUID tenantId = UUID.randomUUID();
         when(conversationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
-        Conversation result = service.start(new StartConversationCommand(tenantId, UUID.randomUUID(), "Hello"));
+        Conversation result = service.start(new StartConversationCommand(tenantId, UUID.randomUUID(), "Hello", null));
 
         assertNotNull(result);
         assertEquals(tenantId, result.getTenantId().value());
@@ -67,7 +67,7 @@ class ConversationCommandServiceTest {
         when(conversationRepository.findById(ConversationId.of(id))).thenReturn(Optional.of(conversation(id)));
         when(conversationRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
-        Conversation result = service.addMessage(new AddMessageCommand(id, "USER", "hi", 1, 0));
+        Conversation result = service.addMessage(new AddMessageCommand(id, "USER", "hi", 1, 0, null));
 
         assertEquals(1, result.messageCount());
         verify(conversationRepository).save(any());
@@ -81,7 +81,7 @@ class ConversationCommandServiceTest {
         when(conversationRepository.findById(ConversationId.of(id))).thenReturn(Optional.of(deleted));
 
         assertThrows(ConversationDeletedException.class,
-                () -> service.addMessage(new AddMessageCommand(id, "USER", "hi", 0, 0)));
+                () -> service.addMessage(new AddMessageCommand(id, "USER", "hi", 0, 0, null)));
         verify(conversationRepository, never()).save(any());
     }
 
@@ -93,7 +93,7 @@ class ConversationCommandServiceTest {
         when(conversationRepository.findById(ConversationId.of(id))).thenReturn(Optional.of(archived));
 
         assertThrows(InvalidConversationStateException.class,
-                () -> service.addMessage(new AddMessageCommand(id, "USER", "hi", 0, 0)));
+                () -> service.addMessage(new AddMessageCommand(id, "USER", "hi", 0, 0, null)));
     }
 
     @Test
@@ -112,6 +112,6 @@ class ConversationCommandServiceTest {
         when(conversationRepository.findById(ConversationId.of(id))).thenReturn(Optional.empty());
 
         assertThrows(ConversationNotFoundException.class,
-                () -> service.addMessage(new AddMessageCommand(id, "USER", "hi", 0, 0)));
+                () -> service.addMessage(new AddMessageCommand(id, "USER", "hi", 0, 0, null)));
     }
 }
