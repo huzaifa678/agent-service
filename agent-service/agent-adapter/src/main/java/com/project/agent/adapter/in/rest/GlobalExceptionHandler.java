@@ -2,6 +2,7 @@ package com.project.agent.adapter.in.rest;
 
 import com.project.agent.adapter.in.rest.dto.ErrorResponse;
 import com.project.agent.application.execution.exception.BudgetExceededException;
+import com.project.agent.application.execution.exception.IdempotencyConflictException;
 import com.project.agent.application.execution.exception.InputGuardrailViolationException;
 import com.project.agent.application.execution.exception.OutputGuardrailViolationException;
 import com.project.agent.application.shared.exception.ApplicationException;
@@ -39,6 +40,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BusinessRuleViolationException.class)
     @ResponseStatus(HttpStatus.UNPROCESSABLE_ENTITY)
     public ErrorResponse handleBusinessRule(BusinessRuleViolationException e) {
+        return ErrorResponse.of(e.getClass().getSimpleName(), e.getMessage());
+    }
+
+    @ExceptionHandler(IdempotencyConflictException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ErrorResponse handleIdempotencyConflict(IdempotencyConflictException e) {
         return ErrorResponse.of(e.getClass().getSimpleName(), e.getMessage());
     }
 
