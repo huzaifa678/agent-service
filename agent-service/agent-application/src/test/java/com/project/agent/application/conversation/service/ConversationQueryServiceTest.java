@@ -96,14 +96,14 @@ public class ConversationQueryServiceTest {
         Conversation conversation = conversation(id);
 
         conversation.addMessage(new Message(
-                MessageId.of(id),
+                MessageId.of(UUID.randomUUID()),
                 MessageContent.of("Hello"),
                 MessageRole.USER,
                 TokenUsage.of(1, 0)
         ));
 
         conversation.addMessage(new Message(
-                MessageId.of(id),
+                MessageId.of(UUID.randomUUID()),
                 MessageContent.of("Hi!"),
                 MessageRole.ASSISTANT,
                 TokenUsage.of(2, 3)
