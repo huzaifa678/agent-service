@@ -24,9 +24,12 @@ import com.project.agent.domain.vo.identity.MessageId;
 import com.project.agent.domain.vo.identity.TenantId;
 import com.project.agent.domain.vo.identity.UserId;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -49,13 +52,33 @@ public class ConversationCommandService implements
 
     @Override
     public Conversation start(StartConversationCommand command) {
+        ConversationId conversationId = idFor("conversation", command.idempotencyKey())
+                .map(ConversationId::of)
+                .orElseGet(() -> ConversationId.of(UUID.randomUUID()));
+
+        // Replay: a retry carrying the same Idempotency-Key maps to the same id, so an
+        // already-started conversation is returned instead of opening a second one.
+        if (command.idempotencyKey() != null) {
+            Optional<Conversation> existing = conversationRepository.findById(conversationId);
+            if (existing.isPresent()) {
+                return existing.get();
+            }
+        }
+
         Conversation conversation = new Conversation(
-                ConversationId.of(UUID.randomUUID()),
+                conversationId,
                 TenantId.of(command.tenantId()),
                 UserId.of(command.userId()),
                 ConversationTitle.of(command.title())
         );
-        return conversationRepository.save(conversation);
+
+        try {
+            return conversationRepository.save(conversation);
+        } catch (OptimisticLockingFailureException concurrentRetry) {
+            // A concurrent retry won the race and created it first; return that one.
+            return conversationRepository.findById(conversationId)
+                    .orElseThrow(() -> concurrentRetry);
+        }
     }
 
     @Override
@@ -71,17 +94,34 @@ public class ConversationCommandService implements
     @Override
     public Conversation addMessage(AddMessageCommand command) {
         Conversation conversation = load(ConversationId.of(command.conversationId()));
+
+        MessageId messageId = idFor("message", command.idempotencyKey())
+                .map(MessageId::of)
+                .orElseGet(() -> MessageId.of(UUID.randomUUID()));
+
+        // Replay: the same Idempotency-Key yields the same message id, so a retry returns
+        // the conversation as-is (even if it was since archived) rather than re-appending.
+        if (command.idempotencyKey() != null
+                && conversation.getMessages().stream().anyMatch(m -> m.getId().equals(messageId))) {
+            return conversation;
+        }
+
         ensureAcceptsMessages(conversation);
 
         Message message = new Message(
-                MessageId.of(UUID.randomUUID()),
+                messageId,
                 MessageContent.of(command.content()),
                 MessageRole.valueOf(command.role()),
                 TokenUsage.of(command.promptTokens(), command.completionTokens())
         );
-        conversation.addMessage(message);
+        conversation.addMessage(message); // no-op in the aggregate if the id is already present
 
-        return conversationRepository.save(conversation);
+        try {
+            return conversationRepository.save(conversation);
+        } catch (OptimisticLockingFailureException concurrentRetry) {
+            // A concurrent retry appended this message first; return the committed state.
+            return load(ConversationId.of(command.conversationId()));
+        }
     }
 
     @Override
@@ -105,6 +145,19 @@ public class ConversationCommandService implements
     private Conversation load(ConversationId id) {
         return conversationRepository.findById(id)
                 .orElseThrow(() -> ConversationNotFoundException.of(id.toString()));
+    }
+
+    /**
+     * Maps a present, non-blank Idempotency-Key to a stable UUID for the given scope, so a
+     * retry resolves to the same entity id. The scope keeps a key used for a conversation and
+     * for a message from colliding. Empty when no key was supplied (ids stay random).
+     */
+    private static Optional<UUID> idFor(String scope, String idempotencyKey) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.of(UUID.nameUUIDFromBytes(
+                (scope + ':' + idempotencyKey).getBytes(StandardCharsets.UTF_8)));
     }
 
     /** Only ACTIVE conversations accept new turns; other states map to explicit domain errors. */
