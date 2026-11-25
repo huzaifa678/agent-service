@@ -180,6 +180,15 @@ public class Conversation extends AbstractAggregateRoot {
         return Collections.unmodifiableList(messages);
     }
 
+    private boolean hasMessage(MessageId messageId) {
+        for (Message existing : messages) {
+            if (existing.getId().equals(messageId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** Rename the conversation. */
     public void rename(ConversationTitle newTitle) {
         applyChange(ConversationEvent.Renamed.of(
@@ -208,6 +217,10 @@ public class Conversation extends AbstractAggregateRoot {
     /** Append a message to the conversation; conversation must be active. */
     public void addMessage(Message message) {
         Objects.requireNonNull(message);
+        // Idempotent on message id.
+        if (hasMessage(message.getId())) {
+            return;
+        }
         ensureActive();
         applyChange(ConversationEvent.MessageAdded.of(
                 id.value(),

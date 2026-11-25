@@ -57,7 +57,8 @@ class AgentStreamingServiceTest {
                         "Hello",
                         "gpt-4o",
                         "openai",
-                        new ArrayList<>()
+                        new ArrayList<>(),
+                        null
                 );
 
         StreamingChatHandler handler =

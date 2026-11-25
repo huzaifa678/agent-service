@@ -25,7 +25,8 @@ public class AgentExecutionCommandController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public AgentExecutionResponse run(
-            @Valid @RequestBody RunAgentRequest request
+            @Valid @RequestBody RunAgentRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
     ) {
 
         return mapper.toResponse(
@@ -35,7 +36,8 @@ public class AgentExecutionCommandController {
                                 request.userMessage(),
                                 request.modelName(),
                                 request.providerName(),
-                                request.enabledTools()
+                                request.enabledTools(),
+                                idempotencyKey
                         )
                 )
         );

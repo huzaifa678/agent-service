@@ -51,13 +51,15 @@ public class AgentExecutionStreamingController {
         StreamingChatHandler handler =
                 new SinkStreamingHandler(sink);
 
+        // Streaming runs aren't idempotency-guarded yet (SSE responses aren't replayable), so no key.
         RunAgentCommand command =
                 new RunAgentCommand(
                         request.conversationId(),
                         request.userMessage(),
                         request.modelName(),
                         request.providerName(),
-                        request.enabledTools()
+                        request.enabledTools(),
+                        null
                 );
 
         Mono.fromRunnable(() ->

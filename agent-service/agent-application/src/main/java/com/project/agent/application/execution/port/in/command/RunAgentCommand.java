@@ -13,5 +13,6 @@ public record RunAgentCommand(
         String userMessage,
         String modelName,
         String providerName,
-        List<String> enabledTools
+        List<String> enabledTools,
+        String idempotencyKey
 ) {}

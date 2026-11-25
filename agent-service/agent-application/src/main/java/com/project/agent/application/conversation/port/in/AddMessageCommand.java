@@ -11,5 +11,6 @@ public record AddMessageCommand(
         String role,
         String content,
         int promptTokens,
-        int completionTokens
+        int completionTokens,
+        String idempotencyKey
 ) {}

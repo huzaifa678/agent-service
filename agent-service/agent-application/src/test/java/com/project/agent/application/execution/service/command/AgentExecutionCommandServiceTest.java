@@ -1,7 +1,10 @@
 package com.project.agent.application.execution.service.command;
 
 
+import com.project.agent.application.execution.exception.IdempotencyConflictException;
 import com.project.agent.application.execution.port.in.command.RunAgentCommand;
+import com.project.agent.application.execution.port.out.conversation.AgentExecutionRepositoryPort;
+import com.project.agent.application.execution.port.out.idempotency.IdempotencyStorePort;
 import com.project.agent.application.execution.port.out.llm.model.ChatResult;
 import com.project.agent.application.execution.service.command.commands.*;
 import com.project.agent.application.execution.service.common.*;
@@ -19,6 +22,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -35,13 +39,21 @@ class AgentExecutionCommandServiceTest {
     @Mock
     private LlmInvocationService llmInvocationService;
 
+    @Mock
+    private AgentExecutionRepositoryPort agentExecutionRepository;
+
+    private FakeIdempotencyStore idempotencyStore;
+
     private AgentExecutionCommandService service;
 
     @BeforeEach
     void setUp() {
+        idempotencyStore = new FakeIdempotencyStore();
         service = new AgentExecutionCommandService(
                 workflow,
-                llmInvocationService
+                llmInvocationService,
+                idempotencyStore,
+                agentExecutionRepository
         );
     }
 
@@ -74,7 +86,8 @@ class AgentExecutionCommandServiceTest {
                         "Hi",
                         "gpt-4o",
                         "openai",
-                        List.of()
+                        List.of(),
+                        null
                 );
 
         when(workflow.prepare(command))
@@ -121,7 +134,8 @@ class AgentExecutionCommandServiceTest {
                         "Hello",
                         "gpt-4o",
                         "openai",
-                        List.of()
+                        List.of(),
+                        null
                 );
 
         when(workflow.prepare(command))
@@ -151,7 +165,8 @@ class AgentExecutionCommandServiceTest {
                         "Hello",
                         "gpt-4o",
                         "openai",
-                        List.of()
+                        List.of(),
+                        null
                 );
 
         when(workflow.prepare(command))
@@ -177,5 +192,102 @@ class AgentExecutionCommandServiceTest {
 
         verify(workflow, never())
                 .finish(any(), any());
+    }
+
+    @Test
+    void run_withIdempotencyKey_replaysOnRetry() {
+
+        AgentExecutionContext context =
+                AgentExecutionContextBuilder.aContext().build();
+
+        AgentExecution execution =
+                AgentExecutionBuilder.anExecution().build();
+
+        ChatResult result = new ChatResult(
+                "Hello!",
+                TokenUsage.of(12, 8),
+                Money.of(BigDecimal.ONE, Currency.getInstance("USD")),
+                List.of()
+        );
+
+        RunAgentCommand command =
+                new RunAgentCommand(
+                        UUID.randomUUID(),
+                        "Hi",
+                        "gpt-4o",
+                        "openai",
+                        List.of(),
+                        "key-1"
+                );
+
+        when(workflow.prepare(command)).thenReturn(context);
+        when(llmInvocationService.invoke(any(), any(), any(), any(), any())).thenReturn(result);
+        when(workflow.finish(context, result)).thenReturn(execution);
+        when(agentExecutionRepository.findById(execution.getId())).thenReturn(Optional.of(execution));
+
+        AgentExecution first = service.run(command);
+        AgentExecution replay = service.run(command); // retry with the same key
+
+        assertSame(execution, first);
+        assertSame(execution, replay);
+        // The expensive path (LLM + persistence) ran exactly once; the retry replayed.
+        verify(workflow, times(1)).prepare(command);
+        verify(llmInvocationService, times(1)).invoke(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void run_withKeyAlreadyInFlight_throwsConflict() {
+
+        IdempotencyStorePort store = mock(IdempotencyStorePort.class);
+        AgentExecutionCommandService svc = new AgentExecutionCommandService(
+                workflow, llmInvocationService, store, agentExecutionRepository);
+
+        RunAgentCommand command =
+                new RunAgentCommand(
+                        UUID.randomUUID(),
+                        "Hi",
+                        "gpt-4o",
+                        "openai",
+                        List.of(),
+                        "key-busy"
+                );
+
+        when(store.find("key-busy")).thenReturn(Optional.of(
+                new IdempotencyStorePort.Entry(
+                        "key-busy", "other-fingerprint", IdempotencyStorePort.Status.IN_PROGRESS, null)));
+
+        assertThrows(IdempotencyConflictException.class, () -> svc.run(command));
+        verifyNoInteractions(workflow, llmInvocationService);
+    }
+
+    /** In-memory {@link IdempotencyStorePort} so the service can be exercised without a database. */
+    private static final class FakeIdempotencyStore implements IdempotencyStorePort {
+
+        private final Map<String, Entry> entries = new HashMap<>();
+
+        @Override
+        public Optional<Entry> find(String key) {
+            return Optional.ofNullable(entries.get(key));
+        }
+
+        @Override
+        public boolean reserve(String key, String fingerprint, Duration ttl) {
+            if (entries.containsKey(key)) {
+                return false;
+            }
+            entries.put(key, new Entry(key, fingerprint, Status.IN_PROGRESS, null));
+            return true;
+        }
+
+        @Override
+        public void complete(String key, UUID resultId) {
+            Entry current = entries.get(key);
+            entries.put(key, new Entry(key, current.fingerprint(), Status.COMPLETED, resultId));
+        }
+
+        @Override
+        public void release(String key) {
+            entries.remove(key);
+        }
     }
 }
